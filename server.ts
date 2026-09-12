@@ -1019,9 +1019,16 @@ echo "=========================================="
               const closestZ = pz + dirZ * t;
               const rayDist = Math.hypot(tx - closestX, ty - closestY, tz - closestZ);
 
-              // Target is hit ONLY IF aim is directly on target in 3D:
-              // If target is elevated or on a wall/platform, aiming up will cleanly register
-              if (dot3D >= 0.90 || rayDist <= 2.2) {
+              // Target is hit if ray is aligned or aimTarget is on the target
+              let directAimMatch = false;
+              if (input.aimTarget) {
+                const distToAimTarget = Math.hypot(tx - input.aimTarget.x, ty - input.aimTarget.y, tz - input.aimTarget.z);
+                if (distToAimTarget <= 2.6) {
+                  directAimMatch = true;
+                }
+              }
+
+              if (directAimMatch || dot3D >= 0.84 || rayDist <= 2.8) {
                 isHit = true;
               }
             }

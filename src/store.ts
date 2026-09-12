@@ -46,6 +46,7 @@ export interface LiveInput {
   useAbility: boolean;
   isRolling: boolean;
   isZoomed: boolean;
+  isTargetLocked?: boolean;
 }
 
 export const liveInput: LiveInput = {
@@ -62,6 +63,7 @@ export const liveInput: LiveInput = {
   useAbility: false,
   isRolling: false,
   isZoomed: false,
+  isTargetLocked: false,
 };
 
 export const attackStatus = {

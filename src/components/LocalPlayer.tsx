@@ -274,7 +274,7 @@ export function LocalPlayer() {
     const camZ = pz + Math.cos(yaw) * hDist + offZ;
 
     // Focus target dynamically angles with pitch so player can look high into the sky and directly hit high platforms/flying enemies
-    const lookDistance = 40.0;
+    const lookDistance = 50.0;
     const targetLookX = px - Math.sin(yaw) * Math.cos(-pitch) * lookDistance;
     const targetLookY = py + 1.2 + Math.sin(-pitch) * lookDistance;
     const targetLookZ = pz - Math.cos(yaw) * Math.cos(-pitch) * lookDistance;
@@ -282,27 +282,109 @@ export function LocalPlayer() {
     camera.position.set(camX, camY, camZ);
     camera.lookAt(targetLookX, targetLookY, targetLookZ);
 
-    // Exact 3D ray through screen center (Crosshair / 焦点)
+    // Exact 3D ray through screen center (Crosshair direction / 画面中心レティクル視線)
     camera.getWorldDirection(camWorldDir.current);
     const normAimX = camWorldDir.current.x;
     const normAimY = camWorldDir.current.y;
     const normAimZ = camWorldDir.current.z;
 
-    // 3D Focal Aim Target in world space (where the crosshair is aimed at)
-    const focusDistance = 80.0;
-    const focalX = camX + normAimX * focusDistance;
-    const focalY = camY + normAimY * focusDistance;
-    const focalZ = camZ + normAimZ * focusDistance;
+    // --- ACCURATE RETICLE RAYCAST (敵・障害物・地面へのクロスヘア交差判定) ---
+    let closestT = 60.0; // Default focal distance if aiming into open air
+    let rayHitEnemy = false;
+
+    // 1. Raycast against all other alive players/bots
+    if (gameState?.players) {
+      for (const otherId in gameState.players) {
+        if (otherId === myId) continue;
+        const other = gameState.players[otherId];
+        if (other.isDead) continue;
+
+        // Player capsule/sphere center in world space
+        const targetCenterX = other.x;
+        const targetCenterY = (other.y || 1) + 1.0;
+        const targetCenterZ = other.z;
+
+        // Vector from camera to target
+        const vcx = targetCenterX - camX;
+        const vcy = targetCenterY - camY;
+        const vcz = targetCenterZ - camZ;
+
+        // Project onto camera aim ray
+        const t = vcx * normAimX + vcy * normAimY + vcz * normAimZ;
+        if (t > 1.5 && t < closestT + 5.0) {
+          // Closest point on ray to target
+          const rayPointX = camX + normAimX * t;
+          const rayPointY = camY + normAimY * t;
+          const rayPointZ = camZ + normAimZ * t;
+
+          // Distance from ray to target center
+          const distToTarget = Math.hypot(targetCenterX - rayPointX, targetCenterY - rayPointY, targetCenterZ - rayPointZ);
+          const TARGET_HIT_RADIUS = 1.6; // generous target hit radius for smooth feel
+
+          if (distToTarget <= TARGET_HIT_RADIUS) {
+            const hitT = Math.max(1.0, t - Math.sqrt(Math.max(0, TARGET_HIT_RADIUS * TARGET_HIT_RADIUS - distToTarget * distToTarget)));
+            if (hitT < closestT) {
+              closestT = hitT;
+              rayHitEnemy = true;
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Raycast against obstacles if no enemy was hit closer
+    if (!rayHitEnemy && gameState?.obstacles) {
+      for (const obs of Object.values(gameState.obstacles)) {
+        if (obs.type === 'ramp') continue;
+        const halfW = obs.width / 2;
+        const halfD = obs.depth / 2;
+        const minX = obs.x - halfW;
+        const maxX = obs.x + halfW;
+        const minY = 0;
+        const maxY = obs.height;
+        const minZ = obs.z - halfD;
+        const maxZ = obs.z + halfD;
+
+        // Fast 3D AABB Slab intersection
+        let t1x = (minX - camX) / (normAimX || 1e-6);
+        let t2x = (maxX - camX) / (normAimX || 1e-6);
+        let t1y = (minY - camY) / (normAimY || 1e-6);
+        let t2y = (maxY - camY) / (normAimY || 1e-6);
+        let t1z = (minZ - camZ) / (normAimZ || 1e-6);
+        let t2z = (maxZ - camZ) / (normAimZ || 1e-6);
+
+        let tmin = Math.max(Math.max(Math.min(t1x, t2x), Math.min(t1y, t2y)), Math.min(t1z, t2z));
+        let tmax = Math.min(Math.min(Math.max(t1x, t2x), Math.max(t1y, t2y)), Math.max(t1z, t2z));
+
+        if (tmax >= Math.max(0, tmin) && tmin > 1.0 && tmin < closestT) {
+          closestT = tmin;
+        }
+      }
+    }
+
+    // 3. Ground intersection
+    if (normAimY < -0.01) {
+      const tGround = (0 - camY) / normAimY;
+      if (tGround > 1.0 && tGround < closestT) {
+        closestT = tGround;
+      }
+    }
+
+    // 3D Focal Aim Target in world space (where the crosshair is exactly aimed at)
+    const focalX = camX + normAimX * closestT;
+    const focalY = camY + normAimY * closestT;
+    const focalZ = camZ + normAimZ * closestT;
 
     liveInput.aimTarget = { x: focalX, y: focalY, z: focalZ };
     liveInput.pitch = pitch;
+    liveInput.isTargetLocked = rayHitEnemy;
 
     // Gun muzzle spawn point (weapon position)
     const muzzleX = px - Math.sin(yaw) * 0.5 + Math.cos(yaw) * 0.4;
     const muzzleY = py + 1.0;
     const muzzleZ = pz - Math.cos(yaw) * 0.5 - Math.sin(yaw) * 0.4;
 
-    // Direct trajectory from muzzle straight towards the 3D 焦点 (focal point):
+    // Direct trajectory from muzzle straight towards the 3D 焦点 (crosshair focal point):
     const bVecX = focalX - muzzleX;
     const bVecY = focalY - muzzleY;
     const bVecZ = focalZ - muzzleZ;

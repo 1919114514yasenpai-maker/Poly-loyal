@@ -538,31 +538,41 @@ export function MobileControls() {
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-40">
         <div className="relative flex items-center justify-center">
           {/* Precise Center Dot */}
-          <div className={`w-2 h-2 rounded-full shadow-[0_0_4px_rgba(0,0,0,0.9)] border border-slate-900/60 ${
-            isZoomedLocal ? 'bg-cyan-300 ring-2 ring-cyan-400/60' : 'bg-white'
+          <div className={`w-2 h-2 rounded-full transition-all duration-75 shadow-[0_0_6px_rgba(0,0,0,0.9)] border ${
+            liveInput.isTargetLocked 
+              ? 'bg-red-500 ring-4 ring-red-500/50 scale-125 border-red-200 shadow-[0_0_10px_rgba(239,68,68,0.9)]'
+              : isZoomedLocal 
+                ? 'bg-cyan-300 ring-2 ring-cyan-400/60 border-cyan-100' 
+                : 'bg-white border-slate-900/60'
           }`} />
 
           {/* Tactical Crosshair Cross-hairs (4 Cardinal Ticks with Center Gap) */}
-          <div className="absolute w-8 h-8 pointer-events-none flex items-center justify-center">
+          <div className={`absolute w-8 h-8 pointer-events-none flex items-center justify-center transition-transform duration-75 ${
+            liveInput.isTargetLocked ? 'scale-110' : ''
+          }`}>
             {/* Top */}
-            <div className={`absolute -top-3 w-0.5 h-2.5 shadow-[0_0_2px_rgba(0,0,0,0.8)] rounded-full ${
-              isZoomedLocal ? 'bg-cyan-300' : 'bg-white/90'
+            <div className={`absolute -top-3 w-0.5 h-2.5 shadow-[0_0_3px_rgba(0,0,0,0.8)] rounded-full transition-colors duration-75 ${
+              liveInput.isTargetLocked ? 'bg-red-400 shadow-[0_0_6px_rgba(239,68,68,0.8)]' : isZoomedLocal ? 'bg-cyan-300' : 'bg-white/90'
             }`} />
             {/* Bottom */}
-            <div className={`absolute -bottom-3 w-0.5 h-2.5 shadow-[0_0_2px_rgba(0,0,0,0.8)] rounded-full ${
-              isZoomedLocal ? 'bg-cyan-300' : 'bg-white/90'
+            <div className={`absolute -bottom-3 w-0.5 h-2.5 shadow-[0_0_3px_rgba(0,0,0,0.8)] rounded-full transition-colors duration-75 ${
+              liveInput.isTargetLocked ? 'bg-red-400 shadow-[0_0_6px_rgba(239,68,68,0.8)]' : isZoomedLocal ? 'bg-cyan-300' : 'bg-white/90'
             }`} />
             {/* Left */}
-            <div className={`absolute -left-3 h-0.5 w-2.5 shadow-[0_0_2px_rgba(0,0,0,0.8)] rounded-full ${
-              isZoomedLocal ? 'bg-cyan-300' : 'bg-white/90'
+            <div className={`absolute -left-3 h-0.5 w-2.5 shadow-[0_0_3px_rgba(0,0,0,0.8)] rounded-full transition-colors duration-75 ${
+              liveInput.isTargetLocked ? 'bg-red-400 shadow-[0_0_6px_rgba(239,68,68,0.8)]' : isZoomedLocal ? 'bg-cyan-300' : 'bg-white/90'
             }`} />
             {/* Right */}
-            <div className={`absolute -right-3 h-0.5 w-2.5 shadow-[0_0_2px_rgba(0,0,0,0.8)] rounded-full ${
-              isZoomedLocal ? 'bg-cyan-300' : 'bg-white/90'
+            <div className={`absolute -right-3 h-0.5 w-2.5 shadow-[0_0_3px_rgba(0,0,0,0.8)] rounded-full transition-colors duration-75 ${
+              liveInput.isTargetLocked ? 'bg-red-400 shadow-[0_0_6px_rgba(239,68,68,0.8)]' : isZoomedLocal ? 'bg-cyan-300' : 'bg-white/90'
             }`} />
             {/* Outer Subtle Ring */}
-            <div className={`w-6 h-6 rounded-full border ${
-              isZoomedLocal ? 'border-cyan-400/50' : 'border-white/20'
+            <div className={`w-6 h-6 rounded-full border transition-all duration-75 ${
+              liveInput.isTargetLocked 
+                ? 'border-red-500/80 scale-125 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
+                : isZoomedLocal 
+                  ? 'border-cyan-400/50' 
+                  : 'border-white/20'
             }`} />
           </div>
 
