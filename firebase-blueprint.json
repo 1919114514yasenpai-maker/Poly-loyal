@@ -1,0 +1,166 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile and battle statistics",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth user UID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Player in-game callsign",
+          "maxLength": 30,
+          "minLength": 1
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address",
+          "maxLength": 200
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile picture URL",
+          "maxLength": 500
+        },
+        "totalWins": {
+          "type": "number",
+          "description": "Total victory royale match wins"
+        },
+        "totalKills": {
+          "type": "number",
+          "description": "Total enemies eliminated"
+        },
+        "totalDeaths": {
+          "type": "number",
+          "description": "Total deaths"
+        },
+        "totalMatches": {
+          "type": "number",
+          "description": "Total matches played"
+        },
+        "favoriteClass": {
+          "type": "string",
+          "description": "Most played character class",
+          "maxLength": 30
+        },
+        "rating": {
+          "type": "number",
+          "description": "Current ELO or rating"
+        },
+        "rankPoints": {
+          "type": "number",
+          "description": "Current rank points"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Account registration timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Profile last update timestamp"
+        }
+      },
+      "required": ["userId", "displayName", "totalWins", "totalKills", "totalMatches", "createdAt", "updatedAt"]
+    },
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "description": "Global leaderboard entry for top players",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Player UID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Player callsign",
+          "maxLength": 30,
+          "minLength": 1
+        },
+        "totalWins": {
+          "type": "number",
+          "description": "Number of victories"
+        },
+        "totalKills": {
+          "type": "number",
+          "description": "Number of kills"
+        },
+        "rating": {
+          "type": "number",
+          "description": "Player rating"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["userId", "displayName", "totalWins", "totalKills", "updatedAt"]
+    },
+    "MatchHistory": {
+      "title": "MatchHistory",
+      "description": "Record of a completed match for a user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique history entry ID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Player UID",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "mode": {
+          "type": "string",
+          "description": "Match mode",
+          "maxLength": 30
+        },
+        "placement": {
+          "type": "number",
+          "description": "Final placement (1 = win)"
+        },
+        "kills": {
+          "type": "number",
+          "description": "Kills in this match"
+        },
+        "ratingChange": {
+          "type": "number",
+          "description": "Change in rating/rank points"
+        },
+        "newRating": {
+          "type": "number",
+          "description": "New rating after match"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of match completion"
+        }
+      },
+      "required": ["id", "userId", "mode", "placement", "kills", "ratingChange", "newRating", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile documents keyed by Firebase Auth UID"
+    },
+    "/leaderboard/{userId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Global leaderboard records keyed by user UID"
+    },
+    "/users/{userId}/history/{historyId}": {
+      "schema": "MatchHistory",
+      "description": "Match history records for a user"
+    }
+  }
+}

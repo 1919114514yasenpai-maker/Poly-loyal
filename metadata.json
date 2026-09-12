@@ -1,0 +1,6 @@
+{
+  "name": "Poly Royale",
+  "description": "A real-time online multiplayer 3D Battle Royale game.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

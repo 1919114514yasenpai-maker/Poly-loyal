@@ -1,0 +1,62 @@
+#!/bin/bash
+set -e
+
+# Target repository directory
+if [ -d "/app/applet/.git" ]; then
+  cd /app/applet
+elif [ -d "./.git" ]; then
+  cd "$(pwd)"
+elif [ -d "$HOME/Poly-Royale/.git" ]; then
+  cd "$HOME/Poly-Royale"
+fi
+
+case "$1" in
+  "repo"|"remote")
+    if [ -z "$2" ]; then
+      echo "使用方法: poly repo https://<GITHUB_TOKEN>@github.com/<USERNAME>/<REPO>.git"
+      exit 1
+    fi
+    git remote remove origin 2>/dev/null || true
+    git remote add origin "$2"
+    echo "✅ GitHubリモートを設定しました: origin -> $2"
+    ;;
+  "up"|"push")
+    echo "📦 最新の変更をステージング中..."
+    git add -A
+    if git diff-index --quiet HEAD -- 2>/dev/null; then
+      echo "ℹ️ コミットする変更はありません（最新状態です）"
+    else
+      MSG="${2:-Update from AI Studio ($(date '+%Y-%m-%d %H:%M:%S'))}"
+      git commit -m "$MSG"
+      echo "✅ コミットを作成しました: $MSG"
+    fi
+
+    if git remote get-url origin >/dev/null 2>&1; then
+      echo "🚀 GitHubへプッシュ中..."
+      git push origin main || git push origin master || git push -u origin main --force
+      echo "🎉 GitHubへのプッシュが完了しました！Renderの自動デプロイが開始されます！"
+    else
+      echo "⚠️ GitHubのリモートURLが設定されていません。"
+      echo "初回のみ、次のどちらかの方法で連携できます："
+      echo ""
+      echo "【方法1】AI Studio内で直接プッシュする場合:"
+      echo "  poly repo https://<GitHubトークン>@github.com/<ユーザー名>/<リポジトリ名>.git"
+      echo "  poly up"
+      echo ""
+      echo "【方法2】Cloud Shellまたは自分の端末から同期する場合（推奨）:"
+      echo "  Cloud Shellで以下を1行実行するだけで、polyコマンドが使えるようになります:"
+      echo "  curl -sSL https://ais-dev-26lckcvht5rkxvj2a7rym3-554926909913.asia-northeast1.run.app/api/poly-install.sh | bash"
+      echo "  poly up"
+    fi
+    ;;
+  "status")
+    git status
+    ;;
+  *)
+    echo "=== Poly Royale デプロイツール ==="
+    echo "使い方:"
+    echo "  poly up             : 変更を自動コミットしてGitHubにプッシュ"
+    echo "  poly repo <URL>     : GitHubリポジトリURLを設定"
+    echo "  poly status         : 変更状況の確認"
+    ;;
+esac
