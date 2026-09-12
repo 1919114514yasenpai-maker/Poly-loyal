@@ -2,7 +2,6 @@ import express from 'express';
 import http from 'http';
 import { Server, Socket } from 'socket.io';
 import path from 'path';
-import { spawn } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import { GameState, ClientInput, CharacterClass, CLASS_STATS, CLASS_ABILITIES, PlayerState, Obstacle, ItemState, getGroundHeight } from './src/types.js';
 
@@ -653,102 +652,6 @@ async function startServer() {
     res.json({ status: 'ok', rooms: Object.keys(rooms).length });
   });
 
-  // Archive endpoint for one-command sync
-  app.get('/api/poly-archive.tar.gz', (req, res) => {
-    res.setHeader('Content-Type', 'application/gzip');
-    res.setHeader('Content-Disposition', 'attachment; filename="poly-royale.tar.gz"');
-    const tarProcess = spawn('tar', [
-      '-czf',
-      '-',
-      '--exclude=node_modules',
-      '--exclude=dist',
-      '--exclude=.git',
-      '.',
-    ], { cwd: process.cwd() });
-
-    tarProcess.stdout.pipe(res);
-    tarProcess.stderr.on('data', (data) => console.error(`tar error: ${data}`));
-    tarProcess.on('error', (err) => {
-      console.error('tar process error:', err);
-      if (!res.headersSent) res.status(500).send('Failed to generate archive');
-    });
-  });
-
-  // Poly CLI installer for Cloud Shell / terminal
-  app.get('/api/poly-install.sh', (req, res) => {
-    const host = req.get('host') || 'ais-dev-26lckcvht5rkxvj2a7rym3-554926909913.asia-northeast1.run.app';
-    const proto = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
-    const baseUrl = `${proto}://${host}`;
-
-    const script = `#!/bin/bash
-set -e
-INSTALL_DIR="$HOME/.local/bin"
-mkdir -p "$INSTALL_DIR"
-
-cat << 'POLY_INNER_EOF' > "$INSTALL_DIR/poly"
-#!/bin/bash
-set -e
-BASE_URL="__REPLACE_BASE_URL__"
-
-case "$1" in
-  "repo"|"remote")
-    if [ -z "$2" ]; then
-      echo "使用方法: poly repo https://<GITHUB_TOKEN>@github.com/<USERNAME>/<REPO>.git"
-      exit 1
-    fi
-    git remote remove origin 2>/dev/null || true
-    git remote add origin "$2"
-    echo "✅ GitHubリモートを設定しました: origin -> $2"
-    ;;
-  "up"|"push")
-    echo "⬇️  AI Studioから最新コードを取得中..."
-    curl -sSL "$BASE_URL/api/poly-archive.tar.gz" | tar -xz
-    echo "📦 変更をステージング中..."
-    git add -A
-    if git diff-index --quiet HEAD -- 2>/dev/null; then
-      echo "ℹ️  最新状態です（コミット不要）"
-    else
-      COMMIT_MSG="\${2:-Update via poly up (\$(date '+%Y-%m-%d %H:%M:%S'))}"
-      git commit -m "$COMMIT_MSG"
-    fi
-    echo "🚀 GitHubへプッシュ中..."
-    git push origin main || git push origin master || git push
-    echo "🎉 GitHubへのプッシュが完了しました！Renderの自動デプロイが開始されます！"
-    ;;
-  "status")
-    git status
-    ;;
-  *)
-    echo "=== Poly Royale デプロイツール ==="
-    echo "使い方:"
-    echo "  poly up             : 最新コードを取得してGitHubへプッシュ"
-    echo "  poly repo <URL>     : リモートリポジトリURLを設定"
-    echo "  poly status         : 変更状況を確認"
-    ;;
-esac
-POLY_INNER_EOF
-
-# Replace placeholder with current AI Studio Base URL
-sed -i 's|__REPLACE_BASE_URL__|${baseUrl}|g' "$INSTALL_DIR/poly"
-chmod +x "$INSTALL_DIR/poly"
-
-# Ensure PATH includes ~/.local/bin
-if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
-  echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
-  export PATH="$INSTALL_DIR:$PATH"
-fi
-
-echo "=========================================="
-echo "✅ 'poly' コマンドのインストールが完了しました！"
-echo "今後は以下のコマンドを打つだけでGitHubとRenderが即時更新されます:"
-echo ""
-echo "   poly up"
-echo "=========================================="
-`;
-    res.setHeader('Content-Type', 'text/x-shellscript');
-    res.send(script);
-  });
-
   io.on('connection', (socket: Socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
@@ -1125,6 +1028,11 @@ echo "=========================================="
       const room = rooms[roomId];
       const player = room.players[socket.id];
       if (!player) return;
+
+      // Only allow in-match respawn in 'bot' (AI Solo) mode
+      if (room.mode !== 'bot') {
+        return;
+      }
 
       const stats = CLASS_STATS[player.characterClass];
       const safePos = findSafeSpawnPosition(room.obstacles, MAP_SIZE, 3.5);

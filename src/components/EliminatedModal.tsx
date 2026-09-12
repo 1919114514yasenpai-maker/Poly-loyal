@@ -31,6 +31,7 @@ export function EliminatedModal({ onReturnToLobby, onPlayAgain }: EliminatedModa
     return null;
   }
 
+  const isAiSolo = gameState.mode === 'bot';
   const otherAlive = Object.values(gameState.players).filter((p) => !p.isDead && p.id !== myId);
   const canSpectate = otherAlive.length > 0;
 
@@ -41,6 +42,7 @@ export function EliminatedModal({ onReturnToLobby, onPlayAgain }: EliminatedModa
   };
 
   const handleRespawnClick = () => {
+    if (!isAiSolo) return;
     if (gameState.status === 'playing') {
       respawn();
     } else {
@@ -49,7 +51,7 @@ export function EliminatedModal({ onReturnToLobby, onPlayAgain }: EliminatedModa
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md pointer-events-auto p-4 select-none touch-none font-sans">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md pointer-events-auto p-4 select-none touch-none font-sans">
       <div className="w-full max-w-md bg-slate-900/95 border-2 border-red-500/40 rounded-3xl p-6 md:p-8 shadow-[0_0_50px_rgba(239,68,68,0.3)] text-white text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
         
         {/* Skull / Defeat Badge */}
@@ -61,7 +63,14 @@ export function EliminatedModal({ onReturnToLobby, onPlayAgain }: EliminatedModa
         <h2 className="text-4xl md:text-5xl font-black text-red-500 tracking-wider mb-1 drop-shadow">
           ELIMINATED
         </h2>
-        <p className="text-slate-400 text-sm font-semibold mb-6">撃破されました</p>
+        <p className="text-slate-400 text-sm font-semibold mb-4">撃破されました</p>
+
+        {!isAiSolo && (
+          <div className="mb-5 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs px-3.5 py-2 rounded-xl font-medium flex items-center gap-2">
+            <span>🛡️</span>
+            <span>バトロワ仕様: AI Soloモード以外はリスポーンできません</span>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-3 w-full mb-6">
@@ -88,33 +97,35 @@ export function EliminatedModal({ onReturnToLobby, onPlayAgain }: EliminatedModa
 
         {/* Action Buttons */}
         <div className="flex flex-col gap-3 w-full">
-          {/* Main Action: Respawn / Play Again */}
-          <button
-            type="button"
-            onClick={handleRespawnClick}
-            className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 font-black text-lg rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 transition-all"
-          >
-            <RotateCcw size={22} className="stroke-[2.5]" />
-            <span>{gameState.status === 'playing' ? '再出撃 (リスポーン)' : 'もう一度プレイ'}</span>
-          </button>
+          {/* AI Solo mode only: Respawn / Play Again */}
+          {isAiSolo && (
+            <button
+              type="button"
+              onClick={handleRespawnClick}
+              className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 font-black text-lg rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 transition-all"
+            >
+              <RotateCcw size={22} className="stroke-[2.5]" />
+              <span>{gameState.status === 'playing' ? '再出撃 (リスポーン)' : 'もう一度プレイ'}</span>
+            </button>
+          )}
 
-          {/* Secondary Action: Spectate (if players alive) */}
+          {/* Secondary / Primary Action: Spectate (if players alive) */}
           {canSpectate && (
             <button
               type="button"
               onClick={handleSpectateClick}
-              className="w-full py-3.5 bg-blue-600/80 hover:bg-blue-600 active:scale-98 text-white font-bold text-base rounded-2xl border border-blue-400/30 shadow-md flex items-center justify-center gap-2 transition-all"
+              className={`w-full ${!isAiSolo ? 'py-4 bg-blue-500 hover:bg-blue-400 text-lg shadow-blue-500/30' : 'py-3.5 bg-blue-600/80 hover:bg-blue-600 text-base'} active:scale-98 text-white font-black rounded-2xl border border-blue-400/30 shadow-lg flex items-center justify-center gap-2 transition-all`}
             >
-              <Eye size={20} />
+              <Eye size={22} />
               <span>生存者を観戦する</span>
             </button>
           )}
 
-          {/* Tertiary Action: Return to Lobby */}
+          {/* Return to Lobby */}
           <button
             type="button"
             onClick={onReturnToLobby}
-            className="w-full py-3 bg-slate-800 hover:bg-slate-700 active:scale-98 text-slate-300 font-bold text-base rounded-2xl border border-white/10 flex items-center justify-center gap-2 transition-all mt-1"
+            className={`w-full ${!isAiSolo && !canSpectate ? 'py-4 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-lg shadow-yellow-400/20' : 'py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-base border border-white/10'} active:scale-98 rounded-2xl flex items-center justify-center gap-2 transition-all`}
           >
             <LogOut size={18} />
             <span>ロビーに戻る</span>
@@ -138,6 +149,7 @@ export function SpectateHUD({ onReturnToLobby }: { onReturnToLobby: () => void }
 
   const targetPlayer = gameState.players[spectateTargetId];
   const otherAlive = Object.values(gameState.players).filter((p) => !p.isDead && p.id !== myId);
+  const isAiSolo = gameState.mode === 'bot';
 
   return (
     <div className="absolute inset-0 z-40 pointer-events-none flex flex-col justify-between p-4 font-sans select-none">
@@ -179,14 +191,16 @@ export function SpectateHUD({ onReturnToLobby }: { onReturnToLobby: () => void }
           ◀ 前のプレイヤー
         </button>
 
-        <button
-          type="button"
-          onClick={() => respawn()}
-          className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-6 py-3 rounded-2xl shadow-xl shadow-emerald-500/30 active:scale-95 transition-all flex items-center gap-2 text-sm"
-        >
-          <RotateCcw size={18} />
-          <span>再出撃</span>
-        </button>
+        {isAiSolo && (
+          <button
+            type="button"
+            onClick={() => respawn()}
+            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-6 py-3 rounded-2xl shadow-xl shadow-emerald-500/30 active:scale-95 transition-all flex items-center gap-2 text-sm"
+          >
+            <RotateCcw size={18} />
+            <span>再出撃</span>
+          </button>
+        )}
 
         <button
           type="button"

@@ -239,20 +239,10 @@ export default function App() {
 
         <button 
           onClick={handleJoin}
-          className="w-full max-w-xs sm:w-auto px-8 sm:px-12 py-3 sm:py-4 bg-yellow-400 text-black font-black text-2xl sm:text-3xl rounded-xl hover:bg-yellow-300 active:scale-95 transition-all shadow-xl"
+          className="w-full max-w-xs sm:w-auto px-8 sm:px-12 py-3 sm:py-4 bg-yellow-400 text-black font-black text-2xl sm:text-3xl rounded-xl hover:bg-yellow-300 active:scale-95 transition-all shadow-xl mb-4"
         >
           JOIN GAME
         </button>
-
-        <div className="flex gap-4 items-center mt-4 sm:mt-6 pb-4">
-          <a
-            href="/api/poly-archive.tar.gz"
-            download="poly-royale-latest.tar.gz"
-            className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700 flex items-center gap-1.5 transition-colors"
-          >
-            <span>📦</span> 最新ソース一括DL (.tar.gz)
-          </a>
-        </div>
       </div>
     );
   }
