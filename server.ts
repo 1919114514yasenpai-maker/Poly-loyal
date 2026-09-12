@@ -393,14 +393,13 @@ function createDynamicState(room: GameState) {
 
 function dePenetrateObstacles(entity: { x: number, y?: number, z: number }, obstacles: Record<string, Obstacle>, radius = 0.95, roomId?: string) {
   const nearby = getNearbyObstacles(roomId, entity.x - radius - 2, entity.x + radius + 2, entity.z - radius - 2, entity.z + radius + 2, obstacles);
-  const currentGround = getGroundHeight(entity.x, entity.z, obstacles);
+  const footY = entity.y !== undefined ? entity.y - 1.0 : getGroundHeight(entity.x, entity.z, obstacles);
 
   for (let i = 0; i < nearby.length; i++) {
     const obs = nearby[i];
     if (obs.type === 'ramp') continue;
-    // Walkable: player is standing on top of it, or stepping onto it from a ramp/platform
-    if (entity.y !== undefined && entity.y >= obs.height - 0.6) continue;
-    if (currentGround >= obs.height - 0.6) continue;
+    // Walkable only if player feet are genuinely atop the obstacle's upper surface
+    if (footY >= obs.height - 0.25) continue;
 
     const halfW = obs.halfW + radius;
     const halfD = obs.halfD + radius;
@@ -462,13 +461,12 @@ function spawnBotsForRoom(room: GameState, count = 12) {
 function checkObstacleCollision(x: number, z: number, obstacles: Record<string, Obstacle>, roomId?: string, y?: number): boolean {
   const RADIUS = 0.95;
   const nearby = getNearbyObstacles(roomId, x - 2, x + 2, z - 2, z + 2, obstacles);
-  const groundH = getGroundHeight(x, z, obstacles);
+  const footY = y !== undefined ? y - 1.0 : getGroundHeight(x, z, obstacles);
 
   for (let i = 0; i < nearby.length; i++) {
     const obs = nearby[i];
     if (obs.type === 'ramp') continue;
-    if (y !== undefined && y >= obs.height - 0.6) continue;
-    if (groundH >= obs.height - 0.6) continue;
+    if (footY >= obs.height - 0.25) continue;
 
     if (x >= obs.minX - RADIUS && x <= obs.maxX + RADIUS && z >= obs.minZ - RADIUS && z <= obs.maxZ + RADIUS) {
       return true;
@@ -641,6 +639,107 @@ function findSafeBypassPoint(fromX: number, fromZ: number, toX: number, toZ: num
     }
   }
   return null;
+}
+
+// Intelligent tactical flanking around obstacles when bot has sufficient HP
+function findFlankingPoint(
+  botX: number, botZ: number,
+  enemyX: number, enemyZ: number,
+  obstacles: Record<string, Obstacle>,
+  roomId?: string
+): { x: number, z: number } | null {
+  const minX = Math.min(botX, enemyX) - 6;
+  const maxX = Math.max(botX, enemyX) + 6;
+  const minZ = Math.min(botZ, enemyZ) - 6;
+  const maxZ = Math.max(botZ, enemyZ) + 6;
+  const nearby = getNearbyObstacles(roomId, minX, maxX, minZ, maxZ, obstacles);
+  if (nearby.length === 0) return null;
+
+  const dx = enemyX - botX;
+  const dz = enemyZ - botZ;
+  const dist = Math.hypot(dx, dz) || 1;
+  const nx = dx / dist; // Forward direction towards enemy
+  const nz = dz / dist;
+  // Perpendicular directions (Left and Right)
+  const perpX = -nz;
+  const perpZ = nx;
+
+  let blockingObs: SpatialObstacle | null = null;
+  let closestObsDist = Infinity;
+
+  for (let i = 0; i < nearby.length; i++) {
+    const obs = nearby[i];
+    if (obs.type === 'ramp') continue;
+    const toObsX = obs.x - botX;
+    const toObsZ = obs.z - botZ;
+    const dot = toObsX * nx + toObsZ * nz;
+
+    // Obstacle is in between bot and enemy
+    if (dot > 0.5 && dot < dist - 0.5) {
+      const projX = botX + nx * dot;
+      const projZ = botZ + nz * dot;
+      const perpDist = Math.hypot(obs.x - projX, obs.z - projZ);
+      const safeRadius = Math.max(obs.halfW, obs.halfD) + 1.8;
+
+      if (perpDist < safeRadius && dot < closestObsDist) {
+        closestObsDist = dot;
+        blockingObs = obs;
+      }
+    }
+  }
+
+  if (!blockingObs) return null;
+
+  // Compute flanking clearance margin: enough distance to step completely clear of the obstacle
+  const clearance = Math.max(blockingObs.halfW, blockingObs.halfD) + 3.2;
+
+  // Check left and right flank candidates
+  const candLeft = {
+    x: blockingObs.x + perpX * clearance,
+    z: blockingObs.z + perpZ * clearance,
+  };
+  const candRight = {
+    x: blockingObs.x - perpX * clearance,
+    z: blockingObs.z - perpZ * clearance,
+  };
+
+  // Additional forward-angled flank points (cutting towards enemy's flank)
+  const forwardAngledLeft = {
+    x: blockingObs.x + perpX * (clearance * 0.9) + nx * 2.5,
+    z: blockingObs.z + perpZ * (clearance * 0.9) + nz * 2.5,
+  };
+  const forwardAngledRight = {
+    x: blockingObs.x - perpX * (clearance * 0.9) + nx * 2.5,
+    z: blockingObs.z - perpZ * (clearance * 0.9) + nz * 2.5,
+  };
+
+  const candidates = [forwardAngledLeft, forwardAngledRight, candLeft, candRight];
+  let bestPoint: { x: number, z: number } | null = null;
+  let bestScore = Infinity;
+
+  for (const cand of candidates) {
+    if (Math.abs(cand.x) > MAP_SIZE / 2 - 4 || Math.abs(cand.z) > MAP_SIZE / 2 - 4) continue;
+    // Don't choose point inside another obstacle
+    if (checkObstacleCollision(cand.x, cand.z, obstacles, roomId)) continue;
+
+    const dBot = Math.hypot(cand.x - botX, cand.z - botZ);
+    const dEnemy = Math.hypot(enemyX - cand.x, enemyZ - cand.z);
+
+    // Direct line of sight from flank waypoint to enemy
+    const hasSight = !isLineBlockedByObstacles(cand.x, 1.2, cand.z, enemyX, 1.2, enemyZ, obstacles, roomId);
+
+    let score = dBot + dEnemy * 0.4;
+    if (hasSight) {
+      score -= 30; // Strong bonus for opening up a clear firing angle
+    }
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestPoint = cand;
+    }
+  }
+
+  return bestPoint;
 }
 
 async function startServer() {
@@ -1442,20 +1541,36 @@ async function startServer() {
           } else if (closestTarget || isMovingToItem || isSeekingCover) {
             let targetMoveX = navTargetX;
             let targetMoveZ = navTargetZ;
+            let isFlanking = false;
 
-            // Intelligent Obstacle Bypass: Find corner waypoint to navigate around blocking walls
-            const bypassPoint = findSafeBypassPoint(bot.x, bot.z, navTargetX, navTargetZ, room.obstacles, roomId);
-            if (bypassPoint) {
-              targetMoveX = bypassPoint.x;
-              targetMoveZ = bypassPoint.z;
+            // Intelligent Flanking when bot has sufficient HP and enemy is behind cover
+            const targetP = closestTarget as PlayerState | null;
+            const isSightBlocked = targetP ? isLineBlockedByObstacles(bot.x, bot.y + 1, bot.z, targetP.x, (targetP.y || 0) + 1, targetP.z, room.obstacles, roomId) : false;
+
+            if (targetP && !isSeekingCover && bot.health >= bot.maxHealth * 0.4 && isSightBlocked) {
+              const flankPoint = findFlankingPoint(bot.x, bot.z, targetP.x, targetP.z, room.obstacles, roomId);
+              if (flankPoint) {
+                targetMoveX = flankPoint.x;
+                targetMoveZ = flankPoint.z;
+                isFlanking = true;
+              }
+            }
+
+            if (!isFlanking) {
+              // Intelligent Obstacle Bypass: Find corner waypoint to navigate around blocking walls
+              const bypassPoint = findSafeBypassPoint(bot.x, bot.z, navTargetX, navTargetZ, room.obstacles, roomId);
+              if (bypassPoint) {
+                targetMoveX = bypassPoint.x;
+                targetMoveZ = bypassPoint.z;
+              }
             }
 
             const dx = targetMoveX - bot.x;
             const dz = targetMoveZ - bot.z;
             const dLen = Math.hypot(dx, dz) || 1;
 
-            // Smooth Aiming: Look towards enemy when in combat, or along movement path
-            if (closestTarget && !isSeekingCover && targetDist < 45) {
+            // Smooth Aiming: Look towards enemy when in direct sight or combat, or along movement path when flanking/bypassing
+            if (closestTarget && !isSeekingCover && !isFlanking && targetDist < 45) {
               const aimDx = aimTargetX - bot.x;
               const aimDz = aimTargetZ - bot.z;
               bot.ry = Math.atan2(-aimDx, -aimDz);
@@ -1464,10 +1579,17 @@ async function startServer() {
             }
 
             // Kiting & Spacing Strategy
-            if (isSeekingCover || isMovingToItem) {
-              // Direct sprint to cover or item
+            if (isSeekingCover || isMovingToItem || isFlanking) {
+              // Direct purposeful movement around obstacle or to cover/item
               moveX = (dx / dLen) * moveSpeed;
               moveZ = (dz / dLen) * moveSpeed;
+
+              // Tactical roll when rounding corner to flank enemy
+              if (isFlanking && targetDist <= 16 && (!bot.lastRollTime || now - bot.lastRollTime > 2600) && Math.random() < 0.25) {
+                bot.isRolling = true;
+                bot.lastRollTime = now;
+                botExt.rollEndTime = now + 360;
+              }
             } else if (isSword) {
               // SWORD CLASS: Aggressive Flank & Rush
               if (targetDist > 3.8) {
@@ -1547,12 +1669,12 @@ async function startServer() {
           const nextX = Math.max(-MAP_SIZE / 2 + 5, Math.min(MAP_SIZE / 2 - 5, bot.x + moveX));
           const nextZ = Math.max(-MAP_SIZE / 2 + 5, Math.min(MAP_SIZE / 2 - 5, bot.z + moveZ));
 
-            if (!checkObstacleCollision(nextX, nextZ, room.obstacles, roomId)) {
+            if (!checkObstacleCollision(nextX, nextZ, room.obstacles, roomId, bot.y)) {
               bot.x = nextX;
               bot.z = nextZ;
             } else {
-              if (!checkObstacleCollision(nextX, bot.z, room.obstacles, roomId)) bot.x = nextX;
-              else if (!checkObstacleCollision(bot.x, nextZ, room.obstacles, roomId)) bot.z = nextZ;
+              if (!checkObstacleCollision(nextX, bot.z, room.obstacles, roomId, bot.y)) bot.x = nextX;
+              else if (!checkObstacleCollision(bot.x, nextZ, room.obstacles, roomId, bot.y)) bot.z = nextZ;
             }
 
             // Update Y based on new X,Z so de-penetration knows our true height

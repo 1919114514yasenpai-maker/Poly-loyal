@@ -20,6 +20,7 @@ export function LocalPlayer() {
   const attackAnimTime = useRef(-10);
   const rollStartTime = useRef(-10);
   const rollDir = useRef({ x: 0, z: -1 });
+  const fallVelocity = useRef(0);
 
   // Smooth camera state
   const camPos = useRef(new Vector3(0, 5, 10));
@@ -119,9 +120,9 @@ export function LocalPlayer() {
 
     const PLAYER_RADIUS = 0.9;
     const currentX = playerRef.current.position.x;
+    const currentY = playerRef.current.position.y;
     const currentZ = playerRef.current.position.z;
-    const currentGroundH = gameState?.obstacles ? getGroundHeight(currentX, currentZ, gameState.obstacles) : 0;
-    const currentEffectiveY = Math.max(playerRef.current.position.y, currentGroundH + 1);
+    const currentFootY = currentY - 1.0;
 
     // 1. Move along X axis and slide smoothly along obstacles
     let moveX = moveVectorX * baseSpeed * dt;
@@ -130,6 +131,11 @@ export function LocalPlayer() {
     if (gameState?.obstacles && Math.abs(moveX) > 0.0001) {
       for (const obs of Object.values(gameState.obstacles)) {
         if (obs.type === 'ramp') continue;
+
+        // Feet are genuinely atop the obstacle's upper surface
+        if (currentFootY >= obs.height - 0.2) {
+          continue;
+        }
 
         // Fast proximity rejection
         if (Math.abs(testX - obs.x) > (obs.width / 2 + PLAYER_RADIUS + 2) || Math.abs(currentZ - obs.z) > (obs.depth / 2 + PLAYER_RADIUS + 2)) {
@@ -142,10 +148,12 @@ export function LocalPlayer() {
         const obsMaxZ = obs.z + obs.depth / 2 + PLAYER_RADIUS;
 
         if (testX > obsMinX && testX < obsMaxX && currentZ > obsMinZ && currentZ < obsMaxZ) {
-          // Walkable check: player is walking onto obstacle from a ramp/high ground
-          const destGroundH = getGroundHeight(testX, currentZ, gameState.obstacles);
-          if (currentEffectiveY >= obs.height - 0.6 || destGroundH >= obs.height - 0.6 || currentGroundH >= obs.height - 0.6) {
-            continue; // Walkable surface!
+          // If moving outward away from obstacle (stepping off cliff/ledge), allow smooth descent
+          if (moveX > 0 && currentX >= obs.x + obs.width / 2) {
+            continue;
+          }
+          if (moveX < 0 && currentX <= obs.x - obs.width / 2) {
+            continue;
           }
 
           // Slide along wall by stopping X movement
@@ -166,6 +174,10 @@ export function LocalPlayer() {
       for (const obs of Object.values(gameState.obstacles)) {
         if (obs.type === 'ramp') continue;
 
+        if (currentFootY >= obs.height - 0.2) {
+          continue;
+        }
+
         if (Math.abs(testX - obs.x) > (obs.width / 2 + PLAYER_RADIUS + 2) || Math.abs(testZ - obs.z) > (obs.depth / 2 + PLAYER_RADIUS + 2)) {
           continue;
         }
@@ -176,9 +188,12 @@ export function LocalPlayer() {
         const obsMaxZ = obs.z + obs.depth / 2 + PLAYER_RADIUS;
 
         if (testX > obsMinX && testX < obsMaxX && testZ > obsMinZ && testZ < obsMaxZ) {
-          const destGroundH = getGroundHeight(testX, testZ, gameState.obstacles);
-          if (currentEffectiveY >= obs.height - 0.6 || destGroundH >= obs.height - 0.6 || currentGroundH >= obs.height - 0.6) {
-            continue; // Walkable surface!
+          // If moving outward away from obstacle (stepping off cliff/ledge), allow smooth descent
+          if (moveZ > 0 && currentZ >= obs.z + obs.depth / 2) {
+            continue;
+          }
+          if (moveZ < 0 && currentZ <= obs.z - obs.depth / 2) {
+            continue;
           }
 
           // Slide along wall by stopping Z movement
@@ -191,10 +206,11 @@ export function LocalPlayer() {
       }
     }
 
-    // 3. Safety anti-stuck de-penetration pass (handles unexpected wedging)
+    // 3. Safety anti-stuck de-penetration pass
     if (gameState?.obstacles) {
       for (const obs of Object.values(gameState.obstacles)) {
         if (obs.type === 'ramp') continue;
+        if (currentFootY >= obs.height - 0.2) continue;
 
         const obsMinX = obs.x - obs.width / 2 - PLAYER_RADIUS;
         const obsMaxX = obs.x + obs.width / 2 + PLAYER_RADIUS;
@@ -202,11 +218,6 @@ export function LocalPlayer() {
         const obsMaxZ = obs.z + obs.depth / 2 + PLAYER_RADIUS;
 
         if (testX > obsMinX && testX < obsMaxX && testZ > obsMinZ && testZ < obsMaxZ) {
-          const destGroundH = getGroundHeight(testX, testZ, gameState.obstacles);
-          if (currentEffectiveY >= obs.height - 0.6 || destGroundH >= obs.height - 0.6) {
-            continue;
-          }
-
           const distLeft = testX - obsMinX;
           const distRight = obsMaxX - testX;
           const distTop = testZ - obsMinZ;
@@ -229,12 +240,21 @@ export function LocalPlayer() {
     const groundH = gameState?.obstacles ? getGroundHeight(playerRef.current.position.x, playerRef.current.position.z, gameState.obstacles) : 0;
     const targetY = myPlayer.isFlying ? groundH + 12 : groundH + 1;
 
-    if (!myPlayer.isFlying && playerRef.current.position.y < targetY) {
-      // Ascending ramp/slope: snap immediately so player's feet stay on top of the ramp surface with zero sinking
+    if (myPlayer.isFlying) {
+      playerRef.current.position.y = MathUtils.lerp(playerRef.current.position.y, targetY, 1 - Math.exp(-12 * dt));
+      fallVelocity.current = 0;
+    } else if (playerRef.current.position.y <= targetY) {
+      // Snapping to ground / walking up ramps
       playerRef.current.position.y = targetY;
+      fallVelocity.current = 0;
     } else {
-      // Descending/gravity fall
-      playerRef.current.position.y = MathUtils.lerp(playerRef.current.position.y, targetY, 1 - Math.exp(-22 * dt));
+      // Smooth, solid gravity fall when stepping off high ledges / cliffs (no stuttering)
+      fallVelocity.current -= 50 * dt;
+      playerRef.current.position.y += fallVelocity.current * dt;
+      if (playerRef.current.position.y <= targetY) {
+        playerRef.current.position.y = targetY;
+        fallVelocity.current = 0;
+      }
     }
 
     // Update live input coordinates directly
