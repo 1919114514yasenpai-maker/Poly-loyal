@@ -159,7 +159,7 @@ export default function App() {
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
-            <span>🤖</span> Bot戦 (AI Solo)
+            <span>🤖</span> Bot戦 (AI Solo) <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/40">⚡オフライン対応</span>
           </button>
           <button 
             onClick={() => setMode('casual')} 
@@ -197,7 +197,7 @@ export default function App() {
 
         {/* Mode subtitle explanation */}
         <div className="text-[11px] sm:text-xs text-slate-400 font-medium mb-3 sm:mb-4 min-h-4 flex items-center justify-center">
-          {mode === 'bot' && '🤖 待ち時間なし！15体の自律型AI Botと大乱闘バトルロイヤル'}
+          {mode === 'bot' && '🤖 ネット接続不要！完全オフラインで15体の自律型AI Botと大乱闘バトルロイヤル'}
           {mode === 'casual' && '⚔️ オンラインの他プレイヤーと通常マッチング'}
           {mode === 'team' && '🛡️ 赤チーム vs 青チームの陣営対抗デスマッチ'}
           {mode === 'ranked' && '🏆 勝敗でレートが増減する本格ランクバトル'}
