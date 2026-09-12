@@ -388,35 +388,44 @@ function markItemsDirty(roomId: string) {
 function createDynamicState(room: GameState, isDeltaTick = false) {
   const roomId = room.roomId;
 
-  // Compress player payloads: round coordinates to 1 decimal place (0.1 units), angle to 2 decimal places
+  // Ultra-compressed player payload for low-bandwidth / speed-throttled networks (128kbps-friendly)
   const compressedPlayers: Record<string, any> = {};
   for (const pid in room.players) {
     const p = room.players[pid];
-    compressedPlayers[pid] = {
+    const baseP: any = {
       id: p.id,
       x: Math.round(p.x * 10) / 10,
       y: Math.round(p.y * 10) / 10,
       z: Math.round(p.z * 10) / 10,
       ry: Math.round(p.ry * 100) / 100,
       health: Math.round(p.health),
-      maxHealth: p.maxHealth,
       isDead: p.isDead,
       score: p.score,
-      isRolling: p.isRolling,
-      isFlying: p.isFlying,
-      hasShield: p.hasShield,
-      isInvulnerable: p.isInvulnerable,
       weaponLevel: p.weaponLevel,
       heals: p.heals,
-      isHealing: p.isHealing,
-      healProgress: p.healProgress ? Math.round(p.healProgress * 10) / 10 : 0,
-      // Metadata fields needed on initial or state refresh
-      name: p.name,
-      team: p.team,
-      color: p.color,
-      characterClass: p.characterClass,
-      isBot: p.isBot,
     };
+
+    // Only include flags if true (falsy keys omitted to save 60% bandwidth)
+    if (p.isRolling) baseP.isRolling = true;
+    if (p.isFlying) baseP.isFlying = true;
+    if (p.hasShield) baseP.hasShield = true;
+    if (p.isInvulnerable) baseP.isInvulnerable = true;
+    if (p.isHealing) {
+      baseP.isHealing = true;
+      baseP.healProgress = p.healProgress ? Math.round(p.healProgress * 10) / 10 : 0;
+    }
+
+    // Static metadata only sent on join/init/refresh, never on regular 15Hz ticks
+    if (!isDeltaTick) {
+      baseP.maxHealth = p.maxHealth;
+      baseP.name = p.name;
+      baseP.team = p.team;
+      baseP.color = p.color;
+      baseP.characterClass = p.characterClass;
+      baseP.isBot = p.isBot;
+    }
+
+    compressedPlayers[pid] = baseP;
   }
 
   // Handle bombs: only include payload when bombs exist, or send empty once when just extinguished

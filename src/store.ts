@@ -70,6 +70,15 @@ export const attackStatus = {
   isTargetLocked: false,
 };
 
+let lastSentInput: {
+  x: number;
+  y: number;
+  z: number;
+  ry: number;
+  pitch: number;
+} | null = null;
+let lastSentTime = 0;
+
 interface StoreState {
   socket: Socket | null;
   gameState: GameState | null;
@@ -192,9 +201,15 @@ export const useGameStore = create<StoreState>((set, get) => ({
         if (state.players) {
           mergedPlayers = { ...prev.gameState.players };
           for (const pid in state.players) {
+            const inc = state.players[pid];
             mergedPlayers[pid] = {
               ...(prev.gameState.players[pid] || {}),
-              ...state.players[pid],
+              ...inc,
+              isRolling: !!inc.isRolling,
+              isFlying: !!inc.isFlying,
+              hasShield: !!inc.hasShield,
+              isInvulnerable: !!inc.isInvulnerable,
+              isHealing: !!inc.isHealing,
             };
           }
           // Remove players that left
@@ -296,25 +311,53 @@ export const useGameStore = create<StoreState>((set, get) => ({
   },
   sendInput: () => {
     const { socket } = get();
-    if (socket && socket.connected) {
-      socket.emit('input', {
-        x: Math.round(liveInput.x * 10) / 10,
-        y: Math.round(liveInput.y * 10) / 10,
-        z: Math.round(liveInput.z * 10) / 10,
-        ry: Math.round(liveInput.ry * 100) / 100,
-        pitch: Math.round(liveInput.pitch * 100) / 100,
-        aimTarget: liveInput.aimTarget ? {
-          x: Math.round(liveInput.aimTarget.x * 10) / 10,
-          y: Math.round(liveInput.aimTarget.y * 10) / 10,
-          z: Math.round(liveInput.aimTarget.z * 10) / 10,
-        } : undefined,
-        moveX: Math.round(liveInput.moveX * 10) / 10,
-        moveY: Math.round(liveInput.moveY * 10) / 10,
-        isShooting: liveInput.isShooting,
-        isHealing: liveInput.isHealing,
-        useAbility: liveInput.useAbility,
-        isRolling: liveInput.isRolling,
-      });
+    if (!socket || !socket.connected) return;
+
+    const roundedX = Math.round(liveInput.x * 10) / 10;
+    const roundedY = Math.round(liveInput.y * 10) / 10;
+    const roundedZ = Math.round(liveInput.z * 10) / 10;
+    const roundedRy = Math.round(liveInput.ry * 100) / 100;
+    const roundedPitch = Math.round(liveInput.pitch * 100) / 100;
+    const isAction = !!(liveInput.isShooting || liveInput.isHealing || liveInput.useAbility || liveInput.isRolling);
+
+    const now = performance.now();
+    // Adaptive send: only send if action occurred, moved/rotated, or 350ms heartbeat elapsed
+    if (!isAction && lastSentInput && (now - lastSentTime < 350)) {
+      const dx = Math.abs(roundedX - lastSentInput.x);
+      const dz = Math.abs(roundedZ - lastSentInput.z);
+      const dry = Math.abs(roundedRy - lastSentInput.ry);
+      const dpitch = Math.abs(roundedPitch - lastSentInput.pitch);
+      if (dx < 0.05 && dz < 0.05 && dry < 0.03 && dpitch < 0.05) {
+        return; // Skip identical static packet to save upstream bandwidth
+      }
     }
+
+    lastSentTime = now;
+    lastSentInput = {
+      x: roundedX,
+      y: roundedY,
+      z: roundedZ,
+      ry: roundedRy,
+      pitch: roundedPitch,
+    };
+
+    socket.emit('input', {
+      x: roundedX,
+      y: roundedY,
+      z: roundedZ,
+      ry: roundedRy,
+      pitch: roundedPitch,
+      aimTarget: liveInput.aimTarget ? {
+        x: Math.round(liveInput.aimTarget.x * 10) / 10,
+        y: Math.round(liveInput.aimTarget.y * 10) / 10,
+        z: Math.round(liveInput.aimTarget.z * 10) / 10,
+      } : undefined,
+      moveX: Math.round(liveInput.moveX * 10) / 10,
+      moveY: Math.round(liveInput.moveY * 10) / 10,
+      isShooting: liveInput.isShooting,
+      isHealing: liveInput.isHealing,
+      useAbility: liveInput.useAbility,
+      isRolling: liveInput.isRolling,
+    });
   },
 }));
