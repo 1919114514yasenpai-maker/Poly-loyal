@@ -1,9 +1,6 @@
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { GameState, PlayerState, ClientInput, CharacterClass, AttackEvent, DamagePopupEvent } from './types.js';
-import { LocalGameEngine } from './localGameEngine.js';
-
-let localEngineInstance: LocalGameEngine | null = null;
 
 export interface DamageIndicator {
   id: string;
@@ -113,11 +110,6 @@ export const useGameStore = create<StoreState>((set, get) => ({
     isZoomed: false,
   },
   connect: (mode, password, characterClass = 'melee') => {
-    // Stop any existing local engine or socket connection
-    if (localEngineInstance) {
-      localEngineInstance.stop();
-      localEngineInstance = null;
-    }
     if (get().socket) {
       get().socket?.disconnect();
     }
@@ -129,87 +121,9 @@ export const useGameStore = create<StoreState>((set, get) => ({
     }
     const rating = profile.rating || profile.rankPoints;
 
-    // --- BOT MATCH (OFFLINE AI SOLO) ---
-    if (mode === 'bot') {
-      localEngineInstance = new LocalGameEngine(characterClass, {
-        onInit: (id, state) => {
-          set({ myId: id, gameState: state, spectateTargetId: null, socket: null });
-          const myPlayer = state.players[id];
-          if (myPlayer) {
-            liveInput.x = myPlayer.x;
-            liveInput.y = myPlayer.y;
-            liveInput.z = myPlayer.z;
-            liveInput.ry = myPlayer.ry;
-            set((prev) => ({
-              input: {
-                ...prev.input,
-                x: myPlayer.x,
-                y: myPlayer.y,
-                z: myPlayer.z,
-                ry: myPlayer.ry,
-              }
-            }));
-          }
-        },
-        onStateUpdate: (state) => {
-          const { myId, spectateTargetId } = get();
-          if (spectateTargetId && state.players && state.players[spectateTargetId]?.isDead) {
-            const otherAlive = Object.values(state.players).filter(p => !p.isDead && p.id !== myId);
-            set({ spectateTargetId: otherAlive.length > 0 ? otherAlive[0].id : null });
-          }
-          set(prev => {
-            if (!prev.gameState) return { gameState: state as GameState };
-            return {
-              gameState: {
-                ...prev.gameState,
-                ...state,
-                obstacles: state.obstacles || prev.gameState.obstacles,
-              }
-            };
-          });
-        },
-        onHitConfirmed: () => {
-          set({ showHitMarker: true });
-          setTimeout(() => set({ showHitMarker: false }), 200);
-        },
-        onPlayerAttacked: (event) => {
-          triggerAttackEvent(event);
-        },
-        onDamageDealt: (event) => {
-          triggerDamagePopup(event);
-        },
-        onTookDamage: ({ attackerX, attackerZ }) => {
-          const { myId, gameState } = get();
-          if (!myId || !gameState) return;
-          const myPlayer = gameState.players[myId];
-          if (!myPlayer) return;
-
-          const dx = attackerX - myPlayer.x;
-          const dz = attackerZ - myPlayer.z;
-          const angle = Math.atan2(dx, -dz);
-          
-          const id = Math.random().toString();
-          set(state => ({
-            damageIndicators: [...state.damageIndicators, { id, angle, timestamp: Date.now() }],
-            showDamageFlash: true
-          }));
-          setTimeout(() => set({ showDamageFlash: false }), 300);
-        },
-        onRespawned: ({ x, y, z }) => {
-          liveInput.x = x;
-          liveInput.y = y;
-          liveInput.z = z;
-          set({ spectateTargetId: null });
-        }
-      });
-      return;
-    }
-
-    // --- ONLINE MULTIPLAYER MODES ---
     const serverUrl = import.meta.env.VITE_SERVER_URL || undefined;
     const socket = io(serverUrl, {
       transports: ['websocket', 'polling'],
-      timeout: 10000,
     });
 
     socket.on('connect', () => {
@@ -304,11 +218,6 @@ export const useGameStore = create<StoreState>((set, get) => ({
     set({ socket, spectateTargetId: null });
   },
   respawn: () => {
-    if (localEngineInstance) {
-      localEngineInstance.respawn();
-      set({ spectateTargetId: null });
-      return;
-    }
     const { socket } = get();
     if (socket && socket.connected) {
       socket.emit('respawn');
@@ -316,10 +225,6 @@ export const useGameStore = create<StoreState>((set, get) => ({
     }
   },
   leaveGame: () => {
-    if (localEngineInstance) {
-      localEngineInstance.stop();
-      localEngineInstance = null;
-    }
     const { socket } = get();
     if (socket) {
       socket.emit('leaveRoom');
@@ -369,23 +274,6 @@ export const useGameStore = create<StoreState>((set, get) => ({
     }
   },
   sendInput: () => {
-    if (localEngineInstance) {
-      localEngineInstance.processInput({
-        x: liveInput.x,
-        y: liveInput.y,
-        z: liveInput.z,
-        ry: liveInput.ry,
-        pitch: liveInput.pitch,
-        aimTarget: liveInput.aimTarget,
-        moveX: liveInput.moveX,
-        moveY: liveInput.moveY,
-        isShooting: liveInput.isShooting,
-        isHealing: liveInput.isHealing,
-        useAbility: liveInput.useAbility,
-        isRolling: liveInput.isRolling,
-      });
-      return;
-    }
     const { socket } = get();
     if (socket && socket.connected) {
       socket.emit('input', {
