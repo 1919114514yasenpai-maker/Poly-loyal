@@ -378,16 +378,84 @@ function getNearbyObstacles(roomId: string | undefined, minX: number, maxX: numb
   return result;
 }
 
-function createDynamicState(room: GameState) {
+const roomItemsDirty: Record<string, boolean> = {};
+const roomHadBombs: Record<string, boolean> = {};
+
+function markItemsDirty(roomId: string) {
+  roomItemsDirty[roomId] = true;
+}
+
+function createDynamicState(room: GameState, isDeltaTick = false) {
+  const roomId = room.roomId;
+
+  // Compress player payloads: round coordinates to 1 decimal place (0.1 units), angle to 2 decimal places
+  const compressedPlayers: Record<string, any> = {};
+  for (const pid in room.players) {
+    const p = room.players[pid];
+    compressedPlayers[pid] = {
+      id: p.id,
+      x: Math.round(p.x * 10) / 10,
+      y: Math.round(p.y * 10) / 10,
+      z: Math.round(p.z * 10) / 10,
+      ry: Math.round(p.ry * 100) / 100,
+      health: Math.round(p.health),
+      maxHealth: p.maxHealth,
+      isDead: p.isDead,
+      score: p.score,
+      isRolling: p.isRolling,
+      isFlying: p.isFlying,
+      hasShield: p.hasShield,
+      isInvulnerable: p.isInvulnerable,
+      weaponLevel: p.weaponLevel,
+      heals: p.heals,
+      isHealing: p.isHealing,
+      healProgress: p.healProgress ? Math.round(p.healProgress * 10) / 10 : 0,
+      // Metadata fields needed on initial or state refresh
+      name: p.name,
+      team: p.team,
+      color: p.color,
+      characterClass: p.characterClass,
+      isBot: p.isBot,
+    };
+  }
+
+  // Handle bombs: only include payload when bombs exist, or send empty once when just extinguished
+  const bombCount = Object.keys(room.bombs).length;
+  let bombsPayload: Record<string, any> | undefined = undefined;
+  if (bombCount > 0) {
+    bombsPayload = {};
+    for (const bid in room.bombs) {
+      const b = room.bombs[bid];
+      bombsPayload[bid] = {
+        id: b.id,
+        x: Math.round(b.x * 10) / 10,
+        y: Math.round(b.y * 10) / 10,
+        z: Math.round(b.z * 10) / 10,
+        exploded: b.exploded,
+      };
+    }
+    roomHadBombs[roomId] = true;
+  } else if (roomHadBombs[roomId]) {
+    bombsPayload = {};
+    roomHadBombs[roomId] = false;
+  }
+
+  // Handle items: on delta ticks, only send items when a change occurred (spawn/pickup)
+  let itemsPayload: Record<string, ItemState> | undefined = undefined;
+  if (!isDeltaTick || roomItemsDirty[roomId]) {
+    itemsPayload = room.items;
+    roomItemsDirty[roomId] = false;
+  }
+
   return {
     roomId: room.roomId,
     mode: room.mode,
     status: room.status,
-    matchTimer: room.matchTimer,
+    matchTimer: Math.round(room.matchTimer * 10) / 10,
     winner: room.winner,
-    players: room.players,
-    items: room.items,
-    bombs: room.bombs,
+    players: compressedPlayers,
+    items: itemsPayload,
+    bombs: bombsPayload,
   };
 }
 
@@ -873,6 +941,7 @@ async function startServer() {
           if (item.type === 'heal') player.heals++;
           if (item.type === 'weapon') player.weaponLevel = Math.min(3, player.weaponLevel + 1);
           delete room.items[itemId];
+          markItemsDirty(roomId);
         }
       }
 
@@ -1230,6 +1299,7 @@ async function startServer() {
                 z: (Math.random() - 0.5) * MAP_SIZE,
               };
             }
+            markItemsDirty(roomId);
 
             Object.values(room.players).forEach((p, index) => {
               p.isDead = false;
@@ -1689,6 +1759,7 @@ async function startServer() {
               if (item.type === 'heal') bot.heals++;
               if (item.type === 'weapon') bot.weaponLevel = Math.min(3, bot.weaponLevel + 1);
               delete room.items[itemId];
+              markItemsDirty(roomId);
               if (botExt.targetItem?.id === itemId) botExt.targetItem = null;
             }
           }
@@ -1856,9 +1927,9 @@ async function startServer() {
         }
       }
 
-      io.to(roomId).emit('stateUpdate', createDynamicState(room));
+      io.to(roomId).emit('stateUpdate', createDynamicState(room, true));
     }
-  }, 50);
+  }, 60);
 
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

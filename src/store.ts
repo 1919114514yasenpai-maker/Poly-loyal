@@ -186,11 +186,32 @@ export const useGameStore = create<StoreState>((set, get) => ({
       }
       set(prev => {
         if (!prev.gameState) return { gameState: state as GameState };
+
+        // Seamlessly merge incoming player delta updates with existing player metadata
+        let mergedPlayers = prev.gameState.players;
+        if (state.players) {
+          mergedPlayers = { ...prev.gameState.players };
+          for (const pid in state.players) {
+            mergedPlayers[pid] = {
+              ...(prev.gameState.players[pid] || {}),
+              ...state.players[pid],
+            };
+          }
+          // Remove players that left
+          for (const pid in prev.gameState.players) {
+            if (!(pid in state.players)) {
+              delete mergedPlayers[pid];
+            }
+          }
+        }
+
         return {
           gameState: {
             ...prev.gameState,
             ...state,
-            // Keep existing static obstacles if stateUpdate does not transmit them
+            players: mergedPlayers,
+            items: state.items !== undefined ? state.items : prev.gameState.items,
+            bombs: state.bombs !== undefined ? state.bombs : prev.gameState.bombs,
             obstacles: state.obstacles || prev.gameState.obstacles,
           }
         };
@@ -277,14 +298,18 @@ export const useGameStore = create<StoreState>((set, get) => ({
     const { socket } = get();
     if (socket && socket.connected) {
       socket.emit('input', {
-        x: liveInput.x,
-        y: liveInput.y,
-        z: liveInput.z,
-        ry: liveInput.ry,
-        pitch: liveInput.pitch,
-        aimTarget: liveInput.aimTarget,
-        moveX: liveInput.moveX,
-        moveY: liveInput.moveY,
+        x: Math.round(liveInput.x * 10) / 10,
+        y: Math.round(liveInput.y * 10) / 10,
+        z: Math.round(liveInput.z * 10) / 10,
+        ry: Math.round(liveInput.ry * 100) / 100,
+        pitch: Math.round(liveInput.pitch * 100) / 100,
+        aimTarget: liveInput.aimTarget ? {
+          x: Math.round(liveInput.aimTarget.x * 10) / 10,
+          y: Math.round(liveInput.aimTarget.y * 10) / 10,
+          z: Math.round(liveInput.aimTarget.z * 10) / 10,
+        } : undefined,
+        moveX: Math.round(liveInput.moveX * 10) / 10,
+        moveY: Math.round(liveInput.moveY * 10) / 10,
         isShooting: liveInput.isShooting,
         isHealing: liveInput.isHealing,
         useAbility: liveInput.useAbility,
