@@ -14,11 +14,11 @@ COPY . .
 # Build client and server bundles
 RUN npm run build
 
-# Default Hugging Face port is 7860, default local/render is 3000
-ENV PORT=7860
+# Default port (Back4App and Render use PORT env var or 3000)
+ENV PORT=3000
 ENV NODE_ENV=production
 
-EXPOSE 7860
+EXPOSE 3000
 
-# Start compiled server
-CMD ["node", "dist/server.cjs"]
+# Start compiled server with aggressive garbage collection limit (200MB max for 256MB containers)
+CMD ["node", "--max-old-space-size=200", "dist/server.cjs"]
