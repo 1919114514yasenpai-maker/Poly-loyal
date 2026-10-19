@@ -154,6 +154,7 @@ interface StoreState {
   sendInput: () => void;
   respawn: () => void;
   leaveGame: () => void;
+  endSinglePlayerMatch: () => void;
   setSpectateTargetId: (id: string | null) => void;
   cycleSpectate: (direction: 1 | -1) => void;
 
@@ -349,40 +350,51 @@ export const useGameStore = create<StoreState>((set, get) => ({
       emote: localStorage.getItem('poly_equipped_emote') || 'victory_cheer',
     };
 
+    // Clean up any existing socket before opening a new one
+    const prevSocket = get().socket;
+    if (prevSocket) {
+      try {
+        prevSocket.removeAllListeners();
+        prevSocket.disconnect();
+      } catch {}
+    }
+
     const serverUrl = getServerUrl();
-    const socket = io(serverUrl, {
+    const socket = io(serverUrl || undefined, {
       transports: ['websocket', 'polling'],
-      timeout: 5000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 8000,
     });
 
     let failoverTriggered = false;
-    const connectionTimeout = setTimeout(() => {
-      if (!socket.connected && !failoverTriggered) {
-        failoverTriggered = true;
-        const nextUrl = failoverToNextBackend(serverUrl);
-        console.warn(`[Connection Timeout] Switching backend to: ${nextUrl}`);
-        socket.disconnect();
-        setTimeout(() => {
-          get().connect(mode, password, characterClass, botCount, team, teamMatchType, playerName, p2pRoomId, equippedCosmetics);
-        }, 300);
-      }
-    }, 4500);
+    let failoverTimer: any = null;
+
+    // Failover timer: only active for external endpoints (like Render on web.app)
+    if (serverUrl && (serverUrl.includes('onrender.com') || window.location.hostname.includes('web.app'))) {
+      failoverTimer = setTimeout(() => {
+        if (!socket.connected && !failoverTriggered) {
+          failoverTriggered = true;
+          const nextUrl = failoverToNextBackend(serverUrl);
+          console.warn(`[Connection Timeout] Switching external backend to: ${nextUrl}`);
+          try {
+            socket.removeAllListeners();
+            socket.disconnect();
+          } catch {}
+          setTimeout(() => {
+            get().connect(mode, password, characterClass, botCount, team, teamMatchType, playerName, p2pRoomId, equippedCosmetics);
+          }, 400);
+        }
+      }, 7000);
+    }
 
     socket.on('connect_error', (err) => {
-      console.warn(`[Socket Connect Error] ${err?.message || err}. Evaluating failover...`);
-      if (!failoverTriggered) {
-        failoverTriggered = true;
-        clearTimeout(connectionTimeout);
-        const nextUrl = failoverToNextBackend(serverUrl);
-        socket.disconnect();
-        setTimeout(() => {
-          get().connect(mode, password, characterClass, botCount, team, teamMatchType, playerName, p2pRoomId, equippedCosmetics);
-        }, 500);
-      }
+      console.warn(`[Socket Connect Note] ${err?.message || err}. Socket.io will retry or fallback transports.`);
     });
 
     socket.on('connect', () => {
-      clearTimeout(connectionTimeout);
+      if (failoverTimer) clearTimeout(failoverTimer);
       console.log('Connected to server:', serverUrl || 'same-origin');
       const currentUserUid = localStorage.getItem('poly_user_uid');
       if (currentUserUid) {
@@ -631,6 +643,12 @@ export const useGameStore = create<StoreState>((set, get) => ({
     if (socket && socket.connected) {
       socket.emit('respawn');
       set({ spectateTargetId: null });
+    }
+  },
+  endSinglePlayerMatch: () => {
+    const { socket } = get();
+    if (socket && socket.connected) {
+      socket.emit('endSinglePlayerMatch');
     }
   },
   leaveGame: () => {

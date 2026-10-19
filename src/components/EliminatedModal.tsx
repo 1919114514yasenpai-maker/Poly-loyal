@@ -2,6 +2,7 @@ import React from 'react';
 import { useGameStore } from '../store';
 import { RotateCcw, Eye, LogOut, Trophy, Target, Shield, Zap } from 'lucide-react';
 import { CharacterClass } from '../types';
+import { calculateStrictRatingChange, getRankInfo } from '../utils/rankUtils';
 
 interface EliminatedModalProps {
   onReturnToLobby: () => void;
@@ -95,7 +96,7 @@ export function EliminatedModal({ onReturnToLobby, onPlayAgain }: EliminatedModa
 
         {/* Mode & Rank Rating Notice */}
         {(() => {
-          const isRankedMode = gameState.mode === 'ranked';
+          const isRankedMode = gameState.mode === 'ranked' || gameState.mode === 'ranked_duo' || gameState.mode === 'ranked_trio';
           if (!isRankedMode) {
             return (
               <div className="w-full mb-5 bg-slate-800/60 border border-slate-700/60 rounded-2xl p-2.5 text-center text-xs text-slate-400">
@@ -104,25 +105,65 @@ export function EliminatedModal({ onReturnToLobby, onPlayAgain }: EliminatedModa
             );
           }
 
-          const killPoints = Math.min(15, myPlayer.score * 3);
-          const placementPoints = otherAlive.length < 3 ? 10 : (otherAlive.length < 10 ? 5 : 0);
-          const totalPoints = killPoints + placementPoints;
+          const totalCombatants = Object.keys(gameState.players).length;
+          const isSinglePlayer = totalCombatants <= 1 || !!(gameState as any)?.noRatingChange;
+          if (isSinglePlayer) {
+            return (
+              <div className="w-full mb-5 bg-amber-500/15 border-2 border-amber-500/50 rounded-2xl p-3 text-center">
+                <div className="text-xs font-black text-amber-300">
+                  ⚠️ 部屋の人数が1人のため、レート変動なしで終了しました (±0 RP)
+                </div>
+              </div>
+            );
+          }
+
+          const localProf = (() => {
+            try { return JSON.parse(localStorage.getItem('poly_profile') || '{}'); } catch { return {}; }
+          })();
+          const currentPts = gameState.mode === 'ranked_duo' 
+            ? (localProf.duoRankPoints || 0) 
+            : gameState.mode === 'ranked_trio' 
+              ? (localProf.trioRankPoints || 0) 
+              : (localProf.soloRankPoints || localProf.rankPoints || 0);
+
+          const finalPlacement = Math.max(2, otherAlive.length + 1);
+          const calcRes = calculateStrictRatingChange(
+            gameState.mode,
+            currentPts,
+            finalPlacement,
+            myPlayer.score || 0,
+            totalCombatants
+          );
+
+          const { ratingChange, placementPoints, killBonus, entryFee } = calcRes;
+          const rankInfo = getRankInfo(currentPts);
+
           return (
             <div className="w-full mb-5 bg-gradient-to-r from-amber-500/10 via-yellow-500/15 to-amber-500/10 border border-yellow-500/40 rounded-2xl p-3 text-center">
-              <span className="text-[11px] font-black text-yellow-300 uppercase tracking-wider block mb-1">
-                🏆 ランク戦 レートポイント (RP) 獲得
-              </span>
-              <div className="flex items-center justify-center gap-3 text-xs font-bold">
-                <span className="text-emerald-400">撃破pt: +{killPoints} RP</span>
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <span className="text-[11px] font-black text-yellow-300 uppercase tracking-wider flex items-center gap-1">
+                  <span>🏆</span>
+                  <span>{rankInfo.labelJa} ランク戦結果 (第{finalPlacement}位)</span>
+                </span>
+                {entryFee > 0 && (
+                  <span className="text-[10px] text-rose-400 font-bold bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
+                    参加費: -{entryFee} RP
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-center gap-2 text-xs font-bold flex-wrap">
+                <span className="text-emerald-400">撃破: +{killBonus} RP</span>
                 <span className="text-slate-400">/</span>
-                <span className={placementPoints >= 0 ? "text-sky-400" : "text-red-400"}>順位pt: {placementPoints >= 0 ? '+' : ''}{placementPoints} RP</span>
+                <span className={placementPoints >= 0 ? "text-sky-400" : "text-red-400"}>
+                  順位: {placementPoints >= 0 ? `+${placementPoints}` : placementPoints} RP
+                </span>
                 <span className="text-slate-400">→</span>
-                <span className={`font-black px-2.5 py-0.5 rounded ${
-                  totalPoints >= 0 
+                <span className={`font-black px-2.5 py-0.5 rounded text-sm ${
+                  ratingChange >= 0 
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
                     : 'bg-red-500/20 text-red-300 border border-red-500/40'
                 }`}>
-                  {totalPoints >= 0 ? '+' : ''}{totalPoints} RP
+                  変動: {ratingChange >= 0 ? `+${ratingChange}` : ratingChange} RP
                 </span>
               </div>
             </div>

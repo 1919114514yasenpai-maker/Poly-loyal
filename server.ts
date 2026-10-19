@@ -543,6 +543,8 @@ function createDynamicState(room: GameState, isDeltaTick = false) {
     bombs: bombsPayload,
     activePlayerIds: activePlayerIds,
     totalOnlineCount: totalOnline,
+    noRatingChange: (room as any).noRatingChange,
+    endReason: (room as any).endReason,
   };
 
   if (!isDeltaTick) {
@@ -1146,12 +1148,8 @@ async function startServer() {
           const count = Math.min(60, Math.max(8, requested));
           const balancedCount = count % 2 === 0 ? count : count + 1;
           spawnBotsForRoom(rooms[roomId], balancedCount);
-        } else if (options.mode === 'ranked_duo') {
-          // Spawn balanced squads of 2 (16 bots = 8 squads)
-          spawnBotsForRoom(rooms[roomId], 16);
-        } else if (options.mode === 'ranked_trio') {
-          // Spawn balanced squads of 3 (18 bots = 6 squads)
-          spawnBotsForRoom(rooms[roomId], 18);
+        } else if (options.mode === 'casual') {
+          spawnBotsForRoom(rooms[roomId], 14);
         }
       }
 
@@ -1543,7 +1541,9 @@ async function startServer() {
       const isLance = player.characterClass === 'lance';
       const range = isLance ? 18 : isSword ? 13 : SHOOT_RANGE;
       const weaponMultiplier = 1 + (player.weaponLevel - 1) * 0.12; // +12% per weapon level for balanced TTK
-      const shootCooldown = Math.max(80, stats.cooldown - (player.weaponLevel - 1) * 15);
+      const shootCooldown = player.characterClass === 'sniper'
+        ? 5000
+        : Math.max(80, stats.cooldown - (player.weaponLevel - 1) * 15);
       
       // Allow shooting while flying (jetpack aerial combat), but stop if healing or actively rolling
       if (input.isShooting && !player.isRolling && !player.isHealing && now - player.lastShootTime > shootCooldown) {
@@ -1825,6 +1825,26 @@ async function startServer() {
       }
     });
 
+    socket.on('endSinglePlayerMatch', () => {
+      try {
+        const roomId = socketRoom[socket.id];
+        if (roomId && rooms[roomId]) {
+          const room = rooms[roomId];
+          const totalPlayers = Object.keys(room.players).length;
+          if (totalPlayers <= 1) {
+            room.status = 'ended';
+            room.winner = null;
+            (room as any).noRatingChange = true;
+            (room as any).endReason = 'single_player';
+            room.matchTimer = 5;
+            broadcastRoomState(io, room, true);
+          }
+        }
+      } catch (err) {
+        console.error('[CRASH PREVENTION] Error in endSinglePlayerMatch:', err);
+      }
+    });
+
     // ==========================================
     // P2P SIGNALING & DIRECT FRIEND MATCH EVENTS
     // ==========================================
@@ -1981,16 +2001,32 @@ async function startServer() {
             }
           } else {
             room.matchTimer -= dt;
-            if (room.mode === 'ranked' && totalPlayers >= 20) {
+            const isRankedMode = room.mode === 'ranked' || room.mode === 'ranked_duo' || room.mode === 'ranked_trio';
+            if (isRankedMode && totalPlayers <= 1) {
+              room.matchTimer = Math.min(room.matchTimer, 10);
+            } else if (room.mode === 'ranked' && totalPlayers >= 20) {
               room.matchTimer = Math.min(room.matchTimer, 5);
             }
           }
 
           if (room.matchTimer <= 0) {
+            const isRankedMode = room.mode === 'ranked' || room.mode === 'ranked_duo' || room.mode === 'ranked_trio';
+            if (isRankedMode && totalPlayers <= 1) {
+              room.status = 'ended';
+              room.winner = null;
+              (room as any).noRatingChange = true;
+              (room as any).endReason = 'single_player';
+              room.matchTimer = 5;
+              broadcastRoomState(io, room, true);
+              continue;
+            }
+
             room.status = 'playing';
             room.items = {};
             room.bombs = {};
             room.winner = null;
+            (room as any).noRatingChange = false;
+            (room as any).endReason = undefined;
 
             // Balanced map spawn: 40 items across the 200x200 arena
             for (let i = 0; i < 40; i++) {
@@ -2899,16 +2935,30 @@ async function startServer() {
             }
           }
         } else if (room.mode === 'ranked_duo' || room.mode === 'ranked_trio') {
-          const aliveSquads = new Set(alivePlayers.map(p => p.squadId).filter(Boolean));
-          if (alivePlayers.length === 0 || (aliveSquads.size === 1 && totalPlayers > 1)) {
+          if (totalPlayers <= 1) {
             room.status = 'ended';
-            const winningSquadId = aliveSquads.size === 1 ? Array.from(aliveSquads)[0] : null;
-            room.winner = winningSquadId || (alivePlayers.length === 1 ? alivePlayers[0].id : null);
+            room.winner = null;
+            (room as any).noRatingChange = true;
+            (room as any).endReason = 'single_player';
             room.matchTimer = 5;
+          } else {
+            const aliveSquads = new Set(alivePlayers.map(p => p.squadId).filter(Boolean));
+            if (alivePlayers.length === 0 || aliveSquads.size === 1) {
+              room.status = 'ended';
+              const winningSquadId = aliveSquads.size === 1 ? Array.from(aliveSquads)[0] : null;
+              room.winner = winningSquadId || (alivePlayers.length === 1 ? alivePlayers[0].id : null);
+              room.matchTimer = 5;
+            }
           }
         } else {
-          // If all players are eliminated, or 1 winner remains out of multiple players
-          if (alivePlayers.length === 0 || (alivePlayers.length === 1 && totalPlayers > 1)) {
+          const isRanked = room.mode === 'ranked';
+          if (isRanked && totalPlayers <= 1) {
+            room.status = 'ended';
+            room.winner = null;
+            (room as any).noRatingChange = true;
+            (room as any).endReason = 'single_player';
+            room.matchTimer = 5;
+          } else if (alivePlayers.length === 0 || (alivePlayers.length === 1 && totalPlayers > 1)) {
             room.status = 'ended';
             room.winner = alivePlayers.length === 1 ? alivePlayers[0].id : null;
             room.matchTimer = 5;

@@ -42,36 +42,36 @@ export function getServerUrl(): string | undefined {
   }
 
   if (typeof window !== 'undefined') {
-    // 1. Manual user override stored in localStorage
+    // 1. Manual user override stored in localStorage (if explicitly selected by user)
     const customUrl = localStorage.getItem('poly_server_url');
     if (customUrl && customUrl.trim()) {
       return customUrl.trim();
     }
 
-    // 2. Active failover fallback (takes precedence to allow connecting to active servers when same-origin is blocked)
+    const hostname = window.location.hostname;
+
+    // 2. Localhost / Dev server / Cloud Run preview (always connect directly to local backend)
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname.includes('run.app')
+    ) {
+      return undefined; // Same-origin connect to local Node.js / Vite server
+    }
+
+    // 3. Firebase Hosting (Waseapp-games-poly-royale.web.app / *.web.app / *.firebaseapp.com)
+    // Check if failover backup was activated, otherwise use primary poly-royale
     const activeFallback = localStorage.getItem('poly_active_render_backend') || cachedActiveServer;
     if (activeFallback) {
       return activeFallback;
     }
 
-    const hostname = window.location.hostname;
-
-    // 3. Localhost / Dev server
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') {
-      return undefined; // Same-origin connect
-    }
-
-    // 4. Cloud Run preview/staging domain (connect to origin)
-    if (hostname.includes('run.app')) {
-      return undefined; // Same-origin connect
-    }
-
-    // 5. Automatic switch for Firebase Hosting (Waseapp-games-poly-royale.web.app / *.web.app / *.firebaseapp.com)
     if (hostname.includes('web.app') || hostname.includes('firebaseapp.com')) {
       return PRIMARY_RENDER_SERVER_URL;
     }
 
-    // 6. Any other external static domain fallback
+    // 4. Any other external static domain fallback
     return PRIMARY_RENDER_SERVER_URL;
   }
   return undefined;

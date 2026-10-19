@@ -817,7 +817,9 @@ export function LocalPlayer() {
     const isSword = myPlayerFull.characterClass === 'sword';
     const isLance = myPlayerFull.characterClass === 'lance';
     const isMelee = isSword || isLance;
-    const cooldownSec = Math.max(50, stats.cooldown - myPlayerFull.weaponLevel * 30) / 1000;
+    const cooldownSec = myPlayerFull.characterClass === 'sniper' 
+      ? 5.0 
+      : Math.max(50, stats.cooldown - myPlayerFull.weaponLevel * 30) / 1000;
 
     if (liveInput.isShooting && state.clock.elapsedTime - lastLocalShoot.current > cooldownSec) {
       lastLocalShoot.current = state.clock.elapsedTime;

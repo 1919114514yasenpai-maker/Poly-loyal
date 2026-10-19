@@ -56,6 +56,54 @@
           "type": "number",
           "description": "Current rank points"
         },
+        "soloRankPoints": {
+          "type": "number",
+          "description": "Solo mode rank points"
+        },
+        "duoRankPoints": {
+          "type": "number",
+          "description": "Duo mode rank points"
+        },
+        "trioRankPoints": {
+          "type": "number",
+          "description": "Trio mode rank points"
+        },
+        "soloWins": {
+          "type": "number",
+          "description": "Solo mode wins"
+        },
+        "duoWins": {
+          "type": "number",
+          "description": "Duo mode wins"
+        },
+        "trioWins": {
+          "type": "number",
+          "description": "Trio mode wins"
+        },
+        "coins": {
+          "type": "number",
+          "description": "Player gold coins currency"
+        },
+        "equippedSkin": {
+          "type": "string",
+          "description": "Equipped character skin ID",
+          "maxLength": 50
+        },
+        "equippedTitle": {
+          "type": "string",
+          "description": "Equipped title ID",
+          "maxLength": 50
+        },
+        "equippedBadge": {
+          "type": "string",
+          "description": "Equipped badge ID",
+          "maxLength": 50
+        },
+        "equippedEmote": {
+          "type": "string",
+          "description": "Equipped emote ID",
+          "maxLength": 50
+        },
         "createdAt": {
           "type": "string",
           "description": "Account registration timestamp"
@@ -95,6 +143,18 @@
         "rating": {
           "type": "number",
           "description": "Player rating"
+        },
+        "solorating": {
+          "type": "number",
+          "description": "Solo mode rating"
+        },
+        "duorating": {
+          "type": "number",
+          "description": "Duo mode rating"
+        },
+        "triorating": {
+          "type": "number",
+          "description": "Trio mode rating"
         },
         "updatedAt": {
           "type": "string",

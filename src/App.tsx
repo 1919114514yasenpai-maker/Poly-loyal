@@ -20,7 +20,7 @@ import { P2PInviteModal } from './components/P2PInviteModal';
 import { P2PStatusBadge } from './components/P2PStatusBadge';
 import { auth, updateUserStats, saveUserCosmeticsAndCoins, UserProfileData } from './firebase';
 import { CharacterClass } from './types';
-import { RotateCcw, LogOut, Trophy, Flame, Sparkles, Users, UserPlus, Zap, Activity, Copy, Check, Share2, ExternalLink, Palette, Calendar } from 'lucide-react';
+import { RotateCcw, LogOut, Trophy, Flame, Sparkles, Users, UserPlus, Zap, Activity, Copy, Check, Share2, ExternalLink, Palette, Calendar, AlertTriangle } from 'lucide-react';
 import { getRankTier, RANK_CONFIGS, getCurrentMonthlySeason, calculateStrictRatingChange, calculateSeasonSoftReset } from './utils/rankUtils';
 import { getApiUrl } from './utils/apiConfig';
 
@@ -97,14 +97,30 @@ const MatchLobbyBanner = React.memo(function MatchLobbyBanner() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
-            <span className="text-sm sm:text-base text-slate-300 font-bold">
-              👥 部屋人数: <strong className="text-white font-mono">{playerCount}</strong> 人
-            </span>
-            <span className="text-slate-500 font-light">|</span>
-            <span className="text-base sm:text-xl font-black text-amber-300 flex items-center gap-1">
-              ⏳ 開始まで: <span className="font-mono text-xl sm:text-2xl text-yellow-400 underline decoration-yellow-500/50">{matchTimer}秒</span>
-            </span>
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="flex items-center gap-3">
+              <span className="text-sm sm:text-base text-slate-300 font-bold">
+                👥 部屋人数: <strong className="text-white font-mono">{playerCount}</strong> 人
+              </span>
+              <span className="text-slate-500 font-light">|</span>
+              <span className="text-base sm:text-xl font-black text-amber-300 flex items-center gap-1">
+                ⏳ 開始まで: <span className="font-mono text-xl sm:text-2xl text-yellow-400 underline decoration-yellow-500/50">{matchTimer}秒</span>
+              </span>
+            </div>
+            {(gameMode === 'ranked' || gameMode === 'ranked_duo' || gameMode === 'ranked_trio') && playerCount <= 1 && (
+              <div className="flex items-center gap-2 mt-1 bg-amber-500/15 border border-amber-500/40 px-3 py-1 rounded-xl text-center">
+                <span className="text-[11px] text-amber-300 font-bold">
+                  ⚠️ 部屋人数が1人の場合はレート変動なしで終了します
+                </span>
+                <button
+                  type="button"
+                  onClick={() => useGameStore.getState().endSinglePlayerMatch()}
+                  className="px-2.5 py-0.5 bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-black rounded-lg cursor-pointer transition-all shadow active:scale-95"
+                >
+                  即時終了 (変動なし)
+                </button>
+              </div>
+            )}
           </div>
         )}
         <div className="text-[10px] sm:text-xs text-sky-300/90 font-medium">
@@ -127,6 +143,9 @@ const EndMatchModal = React.memo(function EndMatchModal({
   const gameMode = useGameStore((s) => s.gameState?.mode);
   const winner = useGameStore((s) => s.gameState?.winner);
   const myId = useGameStore((s) => s.myId);
+  const noRatingChange = useGameStore((s) => (s.gameState as any)?.noRatingChange);
+  const playerCount = useGameStore((s) => Object.keys(s.gameState?.players || {}).length);
+  const isSinglePlayerRoom = (gameMode === 'ranked' || gameMode === 'ranked_duo' || gameMode === 'ranked_trio') && (playerCount <= 1 || !!noRatingChange);
   const myPlayerTeam = useGameStore((s) => {
     const p = s.myId && s.gameState ? s.gameState.players[s.myId] : null;
     return p ? (p as any).team : null;
@@ -143,10 +162,16 @@ const EndMatchModal = React.memo(function EndMatchModal({
     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-md text-white pointer-events-auto p-4 select-none touch-none">
       <div className="w-full max-w-md bg-slate-900/95 border-2 border-yellow-500/40 rounded-3xl p-6 md:p-8 shadow-[0_0_50px_rgba(234,179,8,0.25)] text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
         <div className="w-16 h-16 rounded-2xl bg-yellow-500/20 border border-yellow-500/50 flex items-center justify-center text-yellow-400 mb-3 shadow-[0_0_20px_rgba(234,179,8,0.4)]">
-          <Trophy size={36} className="animate-bounce" />
+          {isSinglePlayerRoom ? (
+            <AlertTriangle size={36} className="text-amber-400 animate-pulse" />
+          ) : (
+            <Trophy size={36} className="animate-bounce" />
+          )}
         </div>
-        <h1 className="text-4xl md:text-5xl font-black text-yellow-400 mb-1 drop-shadow tracking-wider">
-          {gameMode === 'team'
+        <h1 className="text-3xl md:text-5xl font-black text-yellow-400 mb-1 drop-shadow tracking-wider">
+          {isSinglePlayerRoom
+            ? 'MATCH ENDED'
+            : gameMode === 'team'
             ? winner === myPlayerTeam
               ? 'TEAM VICTORY!'
               : 'DEFEAT'
@@ -155,8 +180,10 @@ const EndMatchModal = React.memo(function EndMatchModal({
             : 'MATCH OVER'}
         </h1>
         
-        <p className="text-slate-400 text-sm font-semibold mb-6">
-          {gameMode === 'team'
+        <p className="text-slate-400 text-sm font-semibold mb-4">
+          {isSinglePlayerRoom
+            ? '部屋の人数が1人のため、レート変動なしで終了しました'
+            : gameMode === 'team'
             ? winner === myPlayerTeam
               ? `自陣（${myPlayerTeam === 'red' ? '赤チーム' : '青チーム'}）が見事勝利しました！`
               : `${winner === 'red' ? '赤チーム' : '青チーム'}の勝利となりました。`
@@ -164,6 +191,18 @@ const EndMatchModal = React.memo(function EndMatchModal({
             ? '見事最後まで生き残りました！'
             : '試合が終了しました'}
         </p>
+
+        {isSinglePlayerRoom && (
+          <div className="w-full mb-5 bg-gradient-to-r from-amber-500/15 via-yellow-500/20 to-amber-500/15 border-2 border-amber-500/50 rounded-2xl p-3 text-center shadow-[0_0_20px_rgba(245,158,11,0.2)]">
+            <div className="text-sm font-black text-amber-300 flex items-center justify-center gap-1.5">
+              <span>⚠️</span>
+              <span>部屋の人数が1人のため レート変動なし (±0 RP)</span>
+            </div>
+            <div className="text-[11px] text-slate-300 mt-1 font-medium">
+              ランク戦は2人以上のプレイヤーが揃った場合のみレート計算が行われます。
+            </div>
+          </div>
+        )}
 
         <div className="bg-slate-800/80 w-full rounded-2xl p-4 mb-6 border border-white/5 flex justify-around items-center">
           <div>
@@ -451,65 +490,119 @@ export default function App() {
     }
   };
 
-  const handleReturnToLobby = () => {
-    // If player died during match and match was not yet recorded
-    if (myPlayerIsDead && roomId && roomId !== lastProcessedMatch) {
-      setLastProcessedMatch(roomId);
-      const otherAliveCount = Object.values(useGameStore.getState().gameState?.players || {}).filter(p => !p.isDead && p.id !== myId).length;
-      const finalPlacement = Math.max(2, otherAliveCount + 1);
-      const myScore = myPlayerScore || 0;
-      const isRankedMode = gameMode === 'ranked' || gameMode === 'ranked_duo' || gameMode === 'ranked_trio';
-      
-      let ratingChange = 0;
-      let targetPts = 0;
-      if (gameMode === 'ranked_duo') {
-        targetPts = cloudProfile?.duoRankPoints ?? profile.duoRankPoints ?? 0;
-      } else if (gameMode === 'ranked_trio') {
-        targetPts = cloudProfile?.trioRankPoints ?? profile.trioRankPoints ?? 0;
-      } else {
-        targetPts = cloudProfile?.soloRankPoints ?? cloudProfile?.rankPoints ?? profile.soloRankPoints ?? profile.rankPoints ?? 0;
-      }
+  const processMatchRatingResult = (forcedPlacement?: number, forcedIsWin?: boolean) => {
+    if (!roomId || roomId === lastProcessedMatch) return;
+    setLastProcessedMatch(roomId);
 
-      if (isRankedMode) {
-        const calcRes = calculateStrictRatingChange(
-          gameMode || 'ranked',
-          targetPts,
-          finalPlacement,
-          myScore,
-          15
-        );
-        ratingChange = calcRes.ratingChange;
+    const currentGameState = useGameStore.getState().gameState;
+    const isRankedMode = gameMode === 'ranked' || gameMode === 'ranked_duo' || gameMode === 'ranked_trio';
+    const totalCombatants = Object.keys(currentGameState?.players || {}).length;
+    const isSinglePlayerRoom = isRankedMode && (totalCombatants <= 1 || !!(currentGameState as any)?.noRatingChange);
 
-        const newTargetPts = Math.max(0, targetPts + ratingChange);
-        const updated = {
-          ...profile,
-          wins: cloudProfile?.totalWins ?? profile.wins ?? 0,
-          streak: 0,
-          rankPoints: gameMode === 'ranked' ? newTargetPts : profile.rankPoints,
-          soloRankPoints: gameMode === 'ranked' ? newTargetPts : (profile.soloRankPoints || 0),
-          duoRankPoints: gameMode === 'ranked_duo' ? newTargetPts : (profile.duoRankPoints || 0),
-          trioRankPoints: gameMode === 'ranked_trio' ? newTargetPts : (profile.trioRankPoints || 0),
-        };
-        setProfile(updated);
-        localStorage.setItem('poly_profile', JSON.stringify(updated));
+    const isWin = isSinglePlayerRoom ? false : (forcedIsWin !== undefined ? forcedIsWin : (winner === myId || (myPlayerTeam && winner === myPlayerTeam)));
+    const myScore = myPlayerScore || 0;
 
-        if (auth.currentUser) {
-          updateUserStats(
-            auth.currentUser.uid,
-            false,
-            myScore,
-            1,
-            charClass,
-            ratingChange,
-            newTargetPts,
-            gameMode || 'casual',
-            myScore,
-            finalPlacement,
-            Math.max(5, myScore * 10)
-          ).then((freshProfile) => {
-            if (freshProfile) setCloudProfile(freshProfile);
-          }).catch((err) => console.error('Error syncing match on lobby return:', err));
+    const otherAliveCount = Object.values(currentGameState?.players || {}).filter(p => !p.isDead && p.id !== myId).length;
+    const finalPlacement = forcedPlacement !== undefined ? forcedPlacement : (isWin ? 1 : Math.max(2, otherAliveCount + 1));
+
+    let targetPts = 0;
+    if (gameMode === 'ranked_duo') {
+      targetPts = cloudProfile?.duoRankPoints ?? profile.duoRankPoints ?? 0;
+    } else if (gameMode === 'ranked_trio') {
+      targetPts = cloudProfile?.trioRankPoints ?? profile.trioRankPoints ?? 0;
+    } else {
+      targetPts = cloudProfile?.soloRankPoints ?? cloudProfile?.rankPoints ?? profile.soloRankPoints ?? profile.rankPoints ?? 0;
+    }
+
+    let newWins = cloudProfile?.totalWins ?? profile.wins ?? 0;
+    let newStreak = profile.streak || 0;
+    let ratingChange = 0;
+
+    if (isSinglePlayerRoom) {
+      // 部屋の人数が1人の場合はレート変動なし (0 RP)
+      ratingChange = 0;
+    } else if (isRankedMode) {
+      newWins += (isWin ? 1 : 0);
+      newStreak = isWin ? ((profile.streak || 0) + 1) : 0;
+      const calcRes = calculateStrictRatingChange(
+        gameMode || 'ranked',
+        targetPts,
+        finalPlacement,
+        myScore,
+        totalCombatants
+      );
+      ratingChange = calcRes.ratingChange;
+    } else {
+      newWins += (isWin ? 1 : 0);
+      newStreak = isWin ? ((profile.streak || 0) + 1) : 0;
+    }
+
+    const newTargetPts = Math.max(0, targetPts + ratingChange);
+    const earnedCoins = isSinglePlayerRoom ? 0 : (isWin ? 60 + myScore * 10 : Math.max(10, myScore * 10));
+
+    const newProfile = {
+      ...profile,
+      wins: newWins,
+      streak: newStreak,
+      rankPoints: gameMode === 'ranked' ? newTargetPts : profile.rankPoints,
+      soloRankPoints: gameMode === 'ranked' ? newTargetPts : (profile.soloRankPoints || 0),
+      duoRankPoints: gameMode === 'ranked_duo' ? newTargetPts : (profile.duoRankPoints || 0),
+      trioRankPoints: gameMode === 'ranked_trio' ? newTargetPts : (profile.trioRankPoints || 0),
+    };
+
+    setProfile(newProfile);
+    localStorage.setItem('poly_profile', JSON.stringify(newProfile));
+
+    // Optimistically update cloudProfile state so UI updates immediately!
+    if (cloudProfile) {
+      setCloudProfile({
+        ...cloudProfile,
+        rankPoints: gameMode === 'ranked' ? newTargetPts : (cloudProfile.rankPoints || 0),
+        soloRankPoints: gameMode === 'ranked' ? newTargetPts : (cloudProfile.soloRankPoints || 0),
+        duoRankPoints: gameMode === 'ranked_duo' ? newTargetPts : (cloudProfile.duoRankPoints || 0),
+        trioRankPoints: gameMode === 'ranked_trio' ? newTargetPts : (cloudProfile.trioRankPoints || 0),
+        totalWins: newWins,
+        totalMatches: isSinglePlayerRoom ? (cloudProfile.totalMatches || 0) : ((cloudProfile.totalMatches || 0) + 1),
+        coins: (cloudProfile.coins || 0) + earnedCoins,
+      });
+    }
+
+    // Sync stats & earned coins to Firebase Firestore if logged in (only when not single-player abort)
+    if (auth.currentUser && !isSinglePlayerRoom) {
+      const deaths = isWin ? 0 : 1;
+      updateUserStats(
+        auth.currentUser.uid,
+        isWin,
+        myScore,
+        deaths,
+        charClass,
+        ratingChange,
+        newTargetPts,
+        gameMode || 'casual',
+        myScore,
+        finalPlacement,
+        earnedCoins
+      ).then((freshProfile) => {
+        if (freshProfile) {
+          setCloudProfile(freshProfile);
         }
+      }).catch((err) => console.error('Error syncing match to Firebase:', err));
+    }
+  };
+
+  const handleReturnToLobby = () => {
+    // If during ranked match or if dead, calculate rating before leaving
+    const isRankedMode = gameMode === 'ranked' || gameMode === 'ranked_duo' || gameMode === 'ranked_trio';
+    if (isRankedMode && roomId && roomId !== lastProcessedMatch) {
+      const currentGameState = useGameStore.getState().gameState;
+      const totalCombatants = Object.keys(currentGameState?.players || {}).length;
+      const isSinglePlayer = totalCombatants <= 1 || !!(currentGameState as any)?.noRatingChange;
+      if (isSinglePlayer) {
+        processMatchRatingResult(1, false);
+      } else {
+        const otherAliveCount = Object.values(currentGameState?.players || {}).filter(p => !p.isDead && p.id !== myId).length;
+        const finalPlacement = isEnded ? (winner === myId ? 1 : 2) : Math.max(2, otherAliveCount + 1);
+        processMatchRatingResult(finalPlacement, isEnded ? (winner === myId) : false);
       }
     }
     leaveGame();
@@ -517,6 +610,19 @@ export default function App() {
   };
 
   const handlePlayAgain = () => {
+    const isRankedMode = gameMode === 'ranked' || gameMode === 'ranked_duo' || gameMode === 'ranked_trio';
+    if (isRankedMode && roomId && roomId !== lastProcessedMatch) {
+      const currentGameState = useGameStore.getState().gameState;
+      const totalCombatants = Object.keys(currentGameState?.players || {}).length;
+      const isSinglePlayer = totalCombatants <= 1 || !!(currentGameState as any)?.noRatingChange;
+      if (isSinglePlayer) {
+        processMatchRatingResult(1, false);
+      } else {
+        const otherAliveCount = Object.values(currentGameState?.players || {}).filter(p => !p.isDead && p.id !== myId).length;
+        const finalPlacement = isEnded ? (winner === myId ? 1 : 2) : Math.max(2, otherAliveCount + 1);
+        processMatchRatingResult(finalPlacement, isEnded ? (winner === myId) : false);
+      }
+    }
     leaveGame();
     setTimeout(() => {
       const resolvedName = cloudProfile?.displayName || (profile as any)?.displayName || '';
@@ -528,79 +634,10 @@ export default function App() {
 
   // Process Match End logic - Strict Multi-Mode Rating calculation
   useEffect(() => {
-    if (status === 'ended' && roomId !== lastProcessedMatch) {
-      setLastProcessedMatch(roomId!);
-      
-      const isWin = winner === myId || (myPlayerTeam && winner === myPlayerTeam);
-      const myScore = myPlayerScore || 0;
-      const isRankedMode = gameMode === 'ranked' || gameMode === 'ranked_duo' || gameMode === 'ranked_trio';
-
-      let targetPts = 0;
-      if (gameMode === 'ranked_duo') {
-        targetPts = cloudProfile?.duoRankPoints ?? profile.duoRankPoints ?? 0;
-      } else if (gameMode === 'ranked_trio') {
-        targetPts = cloudProfile?.trioRankPoints ?? profile.trioRankPoints ?? 0;
-      } else {
-        targetPts = cloudProfile?.soloRankPoints ?? cloudProfile?.rankPoints ?? profile.soloRankPoints ?? profile.rankPoints ?? 0;
-      }
-
-      let newWins = (cloudProfile?.totalWins ?? profile.wins ?? 0) + (isWin ? 1 : 0);
-      let newStreak = isWin ? ((profile.streak || 0) + 1) : 0;
-      let ratingChange = 0;
-
-      if (isRankedMode) {
-        const calcRes = calculateStrictRatingChange(
-          gameMode || 'ranked',
-          targetPts,
-          isWin ? 1 : 2,
-          myScore,
-          15
-        );
-        ratingChange = calcRes.ratingChange;
-      }
-
-      const newTargetPts = Math.max(0, targetPts + ratingChange);
-      const earnedCoins = isWin ? 60 + myScore * 10 : Math.max(10, myScore * 10);
-
-      const newProfile = {
-        ...profile,
-        wins: newWins,
-        streak: newStreak,
-        rankPoints: gameMode === 'ranked' ? newTargetPts : profile.rankPoints,
-        soloRankPoints: gameMode === 'ranked' ? newTargetPts : (profile.soloRankPoints || 0),
-        duoRankPoints: gameMode === 'ranked_duo' ? newTargetPts : (profile.duoRankPoints || 0),
-        trioRankPoints: gameMode === 'ranked_trio' ? newTargetPts : (profile.trioRankPoints || 0),
-      };
-
-      setProfile(newProfile);
-      localStorage.setItem('poly_profile', JSON.stringify(newProfile));
-
-      // Sync stats & earned coins to Firebase Firestore if logged in
-      if (auth.currentUser) {
-        const deaths = isWin ? 0 : 1;
-        const otherAliveCount = Object.values(useGameStore.getState().gameState?.players || {}).filter(p => !p.isDead && p.id !== myId).length;
-        const finalPlacement = isWin ? 1 : Math.max(2, otherAliveCount + 1);
-
-        updateUserStats(
-          auth.currentUser.uid,
-          isWin,
-          myScore,
-          deaths,
-          charClass,
-          ratingChange,
-          newTargetPts,
-          gameMode || 'casual',
-          myScore,
-          finalPlacement,
-          earnedCoins
-        ).then((freshProfile) => {
-          if (freshProfile) {
-            setCloudProfile(freshProfile);
-          }
-        }).catch((err) => console.error('Error syncing match to Firebase:', err));
-      }
+    if (status === 'ended' && roomId && roomId !== lastProcessedMatch) {
+      processMatchRatingResult();
     }
-  }, [status, roomId, winner, gameMode]);
+  }, [status, roomId, winner, gameMode, lastProcessedMatch]);
 
   // Determine active rating points based on selected menu mode
   const getDisplayPointsForMode = () => {

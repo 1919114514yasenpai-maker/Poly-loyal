@@ -318,6 +318,8 @@ export interface GameState {
   battleBus?: BattleBusState;
   totalOnlineCount?: number;
   teamScores?: { red: number; blue: number };
+  noRatingChange?: boolean;
+  endReason?: 'single_player' | string;
 }
 
 export interface ClientInput {

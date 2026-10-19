@@ -44,10 +44,21 @@ service cloud.firestore {
         (!('totalDeaths' in data) || (data.totalDeaths is number && data.totalDeaths >= 0)) &&
         (!('rating' in data) || data.rating == null || data.rating is number) &&
         (!('rankPoints' in data) || data.rankPoints == null || data.rankPoints is number) &&
+        (!('soloRankPoints' in data) || data.soloRankPoints == null || data.soloRankPoints is number) &&
+        (!('duoRankPoints' in data) || data.duoRankPoints == null || data.duoRankPoints is number) &&
+        (!('trioRankPoints' in data) || data.trioRankPoints == null || data.trioRankPoints is number) &&
+        (!('soloWins' in data) || data.soloWins == null || data.soloWins is number) &&
+        (!('duoWins' in data) || data.duoWins == null || data.duoWins is number) &&
+        (!('trioWins' in data) || data.trioWins == null || data.trioWins is number) &&
+        (!('coins' in data) || data.coins == null || data.coins is number) &&
+        (!('equippedSkin' in data) || (data.equippedSkin is string && data.equippedSkin.size() <= 50)) &&
+        (!('equippedTitle' in data) || (data.equippedTitle is string && data.equippedTitle.size() <= 50)) &&
+        (!('equippedBadge' in data) || (data.equippedBadge is string && data.equippedBadge.size() <= 50)) &&
+        (!('equippedEmote' in data) || (data.equippedEmote is string && data.equippedEmote.size() <= 50)) &&
         data.createdAt is string && data.createdAt.size() <= 50 &&
         data.updatedAt is string && data.updatedAt.size() <= 50 &&
         data.keys().hasAll(['userId', 'displayName', 'totalWins', 'totalKills', 'totalMatches', 'createdAt', 'updatedAt']) &&
-        data.keys().size() <= 16;
+        data.keys().size() <= 30;
     }
 
     // Entity Validation: LeaderboardEntry
@@ -62,8 +73,11 @@ service cloud.firestore {
         data.totalKills is number && data.totalKills >= 0 &&
         data.updatedAt is string && data.updatedAt.size() <= 50 &&
         (!('rating' in data) || data.rating == null || data.rating is number) &&
+        (!('solorating' in data) || data.solorating == null || data.solorating is number) &&
+        (!('duorating' in data) || data.duorating == null || data.duorating is number) &&
+        (!('triorating' in data) || data.triorating == null || data.triorating is number) &&
         data.keys().hasAll(['userId', 'displayName', 'totalWins', 'totalKills', 'updatedAt']) &&
-        data.keys().size() <= 10;
+        data.keys().size() <= 16;
     }
 
     // 1. User Profiles Collection
@@ -80,7 +94,7 @@ service cloud.firestore {
         isValidUserProfile(incoming(), userId) &&
         incoming().userId == existing().userId &&
         incoming().createdAt == existing().createdAt &&
-        incoming().diff(existing()).affectedKeys().hasAny(['displayName', 'email', 'photoURL', 'totalWins', 'totalKills', 'totalDeaths', 'totalMatches', 'favoriteClass', 'rating', 'rankPoints', 'updatedAt']);
+        incoming().diff(existing()).affectedKeys().hasAny(['displayName', 'email', 'photoURL', 'totalWins', 'totalKills', 'totalDeaths', 'totalMatches', 'favoriteClass', 'rating', 'rankPoints', 'soloRankPoints', 'duoRankPoints', 'trioRankPoints', 'soloWins', 'duoWins', 'trioWins', 'coins', 'equippedSkin', 'equippedTitle', 'equippedBadge', 'equippedEmote', 'updatedAt']);
 
       allow delete: if isOwner(userId) && isValidId(userId);
     }
